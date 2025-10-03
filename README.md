@@ -48,7 +48,7 @@ Expected outcome: A prototype decision-support tool that assists hospitals in ta
 - Node.js  
 
 **Database**  
-- PostgreSQL / MySQL / MongoDB  
+- MongoDB  
 
 **Version Control**  
 - GitHub / GitLab  
