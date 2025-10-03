@@ -1,13 +1,53 @@
-import moongoose from 'mongoose';
+import mongoose from 'mongoose';
 
-const loginSchema = new moongoose.Schema(
-    {
-        username: { type: String, required: true },
-        password: { type: String, required: true },
-        role: { type: String, enum: ['admin'], default: 'admin' },
+const loginSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: true,
+        refPath: 'userType'
     },
-    { timestamps: true }
-);
-const Login = moongoose.model('Login', loginSchema);
+    userType: {
+        type: String,
+        required: true,
+        enum: ['Admin', 'User']
+    },
+    email: {
+        type: String,
+        required: true
+    },
+    ipAddress: {
+        type: String,
+        required: true
+    },
+    userAgent: {
+        type: String,
+        default: null
+    },
+    loginStatus: {
+        type: String,
+        enum: ['success', 'failed'],
+        required: true
+    },
+    failureReason: {
+        type: String,
+        default: null
+    },
+    location: {
+        country: String,
+        city: String,
+        timezone: String
+    }
+}, { 
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// Index for faster queries
+loginSchema.index({ userId: 1, createdAt: -1 });
+loginSchema.index({ ipAddress: 1, createdAt: -1 });
+loginSchema.index({ email: 1, createdAt: -1 });
+
+const Login = mongoose.model('Login', loginSchema);
 
 export default Login;
