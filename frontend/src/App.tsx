@@ -2,6 +2,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { LoginPage } from './pages/Login';
+import { SignupPage } from './pages/Signup';
 import { ProtectedRoute } from './components/ProtectedRoutes';
 import { authService } from '@/features/auth/services/authService';
 
@@ -32,8 +33,7 @@ const DashboardPage: React.FC = () => {
             </button>
           </div>
           <p className="text-gray-600 text-lg text-center mt-2">
-            Welcome to your dashboard! Tailwind CSS is working! 
-
+            Welcome to your dashboard! 
           </p>
           <div className="mt-6 flex justify-center space-x-4">
             <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-300">
@@ -72,7 +72,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        
+        <Route path="/signup" element={<SignupPage />} />
+
         <Route
           path="/dashboard"
           element={

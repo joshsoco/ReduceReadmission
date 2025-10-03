@@ -44,6 +44,46 @@ interface UserProfile {
   };
 }
 
+interface SignupCredentials {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+interface SignupResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    token: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      createdAt: string;
+    };
+  };
+}
+
+interface AvailabilityCheck {
+  email?: string;
+  name?: string;
+}
+
+interface AvailabilityResponse {
+  success: boolean;
+  data?: {
+    email?: {
+      available: boolean;
+      message: string;
+    };
+    name?: {
+      available: boolean;
+      message: string;
+    };
+  };
+}
+
 class AuthService {
   private getAuthHeaders(): HeadersInit {
     const token = this.getToken();
@@ -173,6 +213,71 @@ class AuthService {
       // If refresh fails, logout user
       this.logout();
       throw new Error(error.message || 'Session expired. Please login again.');
+    }
+  }
+
+  async signup(credentials: SignupCredentials): Promise<SignupResponse> {
+    try {
+      if (credentials.password !== credentials.confirmPassword) {
+        throw new Error('Passwords do not match');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/auth/user/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: credentials.name.trim(),
+          email: credentials.email.trim(),
+          password: credentials.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Signup failed');
+      }
+
+      // Store the token and user data
+      if (data.data?.token) {
+        localStorage.setItem('authToken', data.data.token);
+        
+        const userInfo = {
+          ...data.data.user,
+          userType: 'user',
+        };
+        localStorage.setItem('user', JSON.stringify(userInfo));
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      throw new Error(error.message || 'Network error. Please try again.');
+    }
+  }
+
+  async checkAvailability(check: AvailabilityCheck): Promise<AvailabilityResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/check-availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(check),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to check availability');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('Check availability error:', error);
+      throw new Error(error.message || 'Failed to check availability');
     }
   }
 

@@ -183,7 +183,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             Don&apos;t have an account?{" "}
             <button
               type="button"
-              onClick={() => navigate("/register")}
+              onClick={() => navigate("/signup")}
               className="font-semibold text-primary hover:underline"
             >
               Sign up

@@ -195,6 +195,134 @@ export const userLogin = async (req, res) => {
   }
 };
 
+// @desc    User signup
+// @route   POST /api/auth/user/signup
+// @access  Public
+export const userSignup = async (req, res) => {
+  try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { name, email, password } = req.body;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('User-Agent');
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    
+    if (existingUser) {
+      await logLoginAttempt(null, 'User', email, ipAddress, userAgent, 'failed', 'Email already registered');
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    // Check if name is already taken
+    const existingName = await User.findOne({ 
+      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+    });
+    
+    if (existingName) {
+      return res.status(400).json({
+        success: false,
+        message: 'This name is already taken. Please choose a different name.'
+      });
+    }
+
+    // Create new user
+    const newUser = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password,
+      isActive: true
+    });
+
+    // Log successful registration
+    await logLoginAttempt(newUser._id, 'User', email, ipAddress, userAgent, 'success');
+
+    // Generate token for auto-login after signup
+    const token = generateToken(newUser, 'User');
+
+    res.status(201).json({
+      success: true,
+      message: 'Account created successfully! You are now logged in.',
+      data: {
+        token,
+        user: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+          createdAt: newUser.createdAt
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('User signup error:', error);
+    
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} is already registered`
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Server error during registration'
+    });
+  }
+};
+
+// @desc    Check name/email availability
+// @route   POST /api/auth/check-availability
+// @access  Public
+export const checkAvailability = async (req, res) => {
+  try {
+    const { email, name } = req.body;
+    const availability = {};
+
+    if (email) {
+      const emailExists = await User.findOne({ email: email.toLowerCase() });
+      availability.email = {
+        available: !emailExists,
+        message: emailExists ? 'Email is already registered' : 'Email is available'
+      };
+    }
+
+    if (name) {
+      const nameExists = await User.findOne({ 
+        name: { $regex: new RegExp(`^${name}$`, 'i') } 
+      });
+      availability.name = {
+        available: !nameExists,
+        message: nameExists ? 'Name is already taken' : 'Name is available'
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      data: availability
+    });
+
+  } catch (error) {
+    console.error('Check availability error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error checking availability'
+    });
+  }
+};
+
 // @desc    Get current user/admin profile
 // @route   GET /api/auth/me
 // @access  Private
@@ -307,6 +435,8 @@ export const refreshToken = async (req, res) => {
 export default {
   adminLogin,
   userLogin,
+  userSignup,
+  checkAvailability,
   getMe,
   logout,
   refreshToken
