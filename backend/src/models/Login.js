@@ -4,12 +4,13 @@ const loginSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,
-        refPath: 'userType'
+        ref: 'Admin'
     },
     userType: {
         type: String,
         required: true,
-        enum: ['Admin', 'User']
+        enum: ['Admin'],
+        default: 'Admin'
     },
     email: {
         type: String,

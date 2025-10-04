@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authService } from '../services/authService.ts';
+import { authService } from '../services/authService';
 
 interface FormData {
   email: string;
@@ -74,7 +74,7 @@ export const useLoginViewModel = () => {
     }
   };
 
-  const handleLogin = async (userType: 'admin' | 'user' = 'admin'): Promise<LoginResult> => {
+  const handleLogin = async (): Promise<LoginResult> => {
     if (!validateForm()) {
       return { success: false, error: 'Validation failed' };
     }
@@ -87,7 +87,6 @@ export const useLoginViewModel = () => {
         email: formData.email,
         password: formData.password,
         rememberMe: formData.rememberMe,
-        userType: userType,
       });
 
       setStatus('success');

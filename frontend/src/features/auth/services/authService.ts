@@ -4,7 +4,6 @@ interface LoginCredentials {
   email: string;
   password: string;
   rememberMe: boolean;
-  userType?: 'admin' | 'user'; // Add user type selection
 }
 
 interface LoginResponse {
@@ -12,18 +11,12 @@ interface LoginResponse {
   message: string;
   data?: {
     token: string;
-    admin?: {
+    admin: {
       id: string;
       name: string;
       email: string;
       role: string;
       lastLogin: string;
-    };
-    user?: {
-      id: string;
-      name: string;
-      email: string;
-      createdAt: string;
     };
   };
 }
@@ -44,46 +37,6 @@ interface UserProfile {
   };
 }
 
-interface SignupCredentials {
-  name: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-}
-
-interface SignupResponse {
-  success: boolean;
-  message: string;
-  data?: {
-    token: string;
-    user: {
-      id: string;
-      name: string;
-      email: string;
-      createdAt: string;
-    };
-  };
-}
-
-interface AvailabilityCheck {
-  email?: string;
-  name?: string;
-}
-
-interface AvailabilityResponse {
-  success: boolean;
-  data?: {
-    email?: {
-      available: boolean;
-      message: string;
-    };
-    name?: {
-      available: boolean;
-      message: string;
-    };
-  };
-}
-
 class AuthService {
   private getAuthHeaders(): HeadersInit {
     const token = this.getToken();
@@ -95,11 +48,7 @@ class AuthService {
 
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-      // Default to admin login if no userType specified
-      const userType = credentials.userType || 'admin';
-      const endpoint = userType === 'admin' ? '/auth/admin/login' : '/auth/user/login';
-      
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}/auth/admin/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -125,14 +74,13 @@ class AuthService {
         }
       }
 
-      // Store user data
-      const userData = data.data?.admin || data.data?.user;
-      if (userData) {
-        const userInfo = {
-          ...userData,
-          userType: userType,
+      // Store admin data
+      if (data.data?.admin) {
+        const adminInfo = {
+          ...data.data.admin,
+          userType: 'Admin',
         };
-        localStorage.setItem('user', JSON.stringify(userInfo));
+        localStorage.setItem('user', JSON.stringify(adminInfo));
       }
 
       return data;
@@ -142,25 +90,43 @@ class AuthService {
     }
   }
 
+// ...existing code...
+
   async logout(): Promise<void> {
+    // For JWT-based auth, we don't actually need to call the backend
+    // Just clear the client-side storage since JWTs are stateless
+    this.clearStorage();
+    console.log('User logged out successfully');
+  }
+
+  async logoutWithServerCall(): Promise<void> {
     try {
-      // Call backend logout endpoint
+      // Call backend logout endpoint if you need server-side logout tracking
       const token = this.getToken();
       if (token) {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
+        const response = await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: this.getAuthHeaders(),
         });
+        
+        if (!response.ok) {
+          console.warn(`Logout API returned ${response.status}: ${response.statusText}`);
+        }
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      console.warn('Logout API call failed:', error);
     } finally {
-      // Clear storage regardless of API call result
-      localStorage.removeItem('authToken');
-      sessionStorage.removeItem('authToken');
-      localStorage.removeItem('user');
+      // Always clear storage regardless of API call result
+      this.clearStorage();
     }
   }
+
+  private clearStorage(): void {
+    localStorage.removeItem('authToken');
+    sessionStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+  }
+
 
   async getCurrentUser(): Promise<UserProfile> {
     try {
@@ -216,71 +182,6 @@ class AuthService {
     }
   }
 
-  async signup(credentials: SignupCredentials): Promise<SignupResponse> {
-    try {
-      if (credentials.password !== credentials.confirmPassword) {
-        throw new Error('Passwords do not match');
-      }
-
-      const response = await fetch(`${API_BASE_URL}/auth/user/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: credentials.name.trim(),
-          email: credentials.email.trim(),
-          password: credentials.password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Signup failed');
-      }
-
-      // Store the token and user data
-      if (data.data?.token) {
-        localStorage.setItem('authToken', data.data.token);
-        
-        const userInfo = {
-          ...data.data.user,
-          userType: 'user',
-        };
-        localStorage.setItem('user', JSON.stringify(userInfo));
-      }
-
-      return data;
-    } catch (error: any) {
-      console.error('Signup error:', error);
-      throw new Error(error.message || 'Network error. Please try again.');
-    }
-  }
-
-  async checkAvailability(check: AvailabilityCheck): Promise<AvailabilityResponse> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/check-availability`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(check),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to check availability');
-      }
-
-      return data;
-    } catch (error: any) {
-      console.error('Check availability error:', error);
-      throw new Error(error.message || 'Failed to check availability');
-    }
-  }
-
   getToken(): string | null {
     return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
   }
@@ -288,11 +189,6 @@ class AuthService {
   getUser(): any {
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
-  }
-
-  getUserType(): 'admin' | 'user' | null {
-    const user = this.getUser();
-    return user?.userType || user?.role === 'superadmin' || user?.role === 'admin' ? 'admin' : 'user';
   }
 
   isAuthenticated(): boolean {
