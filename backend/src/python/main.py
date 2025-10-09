@@ -153,7 +153,7 @@ def export_to_pdf(results, output_filename="readmission_results.pdf"):
 
         # Confusion matrix table
         cm = metrics['confusion_matrix']
-        cm_table = Table(cm, colWidths=[60]*len(cm))
+        cm_table = Table(cm.tolist(), colWidths=[60]*len(cm))
         cm_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
