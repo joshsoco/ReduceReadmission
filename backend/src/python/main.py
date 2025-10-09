@@ -15,6 +15,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -209,7 +210,9 @@ plt.close(fig2)
 # -------------------------
 # 10) Prepare PDF report using ReportLab
 # -------------------------
-pdf_filename = "model_report.pdf"
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+pdf_filename = f"model_report_{timestamp}.pdf"
+
 doc = SimpleDocTemplate(pdf_filename, pagesize=letter)
 styles = getSampleStyleSheet()
 story = []
