@@ -1,174 +1,211 @@
-# ===============================
-# 📦 Import Libraries
-# ===============================
+# main.py (robust, fixed)
+import os
 import pandas as pd
 import numpy as np
-import csv
-import warnings
-warnings.filterwarnings('ignore')
-
-# ML and preprocessing
-from sklearn.preprocessing import LabelEncoder, RobustScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-
-# Models
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-
-# Visualization
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# PDF generation
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from imblearn.over_sampling import SMOTE
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+)
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+import warnings
+warnings.filterwarnings("ignore")
 
-# ===============================
-# 🧠 Step 1: Smart File Loader
-# ===============================
-def load_data(filename):
-    """Loads dataset and auto-detects type & delimiter."""
-    if filename.endswith('.csv'):
-        with open(filename, 'r', encoding='utf-8') as file:
-            sample = file.read(2048)
-            sniffer = csv.Sniffer()
-            delimiter = sniffer.sniff(sample).delimiter
-        print(f"Detected delimiter: '{delimiter}'")
-        data = pd.read_csv(filename, delimiter=delimiter, na_values=['?', '[]'])
-    elif filename.endswith('.xlsx'):
-        data = pd.read_excel(filename)
-    elif filename.endswith('.json'):
-        data = pd.read_json(filename)
-    else:
-        raise ValueError("Unsupported file type. Please use CSV, Excel, or JSON.")
-    return data
+# ---------- Try several possible dataset filenames ----------
+possible_names = ["readmission_data.csv", "train.csv", "data.csv", "dataset.csv"]
+file_path = None
+for name in possible_names:
+    if os.path.exists(name):
+        file_path = name
+        break
 
-# ===============================
-# 🧹 Step 2: Load & Clean Data
-# ===============================
-data = load_data('train.csv')
-print("\n✅ Data loaded successfully!")
-print(data.head())
+if file_path is None:
+    print("❌ No dataset found. Please put your CSV in this folder named one of:")
+    print(", ".join(possible_names))
+    raise SystemExit(1)
 
-# Check for missing values
-print("\nChecking for missing values:")
-print(data.isnull().sum())
-data = data.dropna()
+print(f"Loading dataset from: {file_path}")
+df = pd.read_csv(file_path)
+print("✅ Data loaded successfully!")
+print(df.head(), "\n")
 
-# ===============================
-# 🏷 Step 3: Encode Categorical Columns
-# ===============================
-label_encoder = LabelEncoder()
-for column in data.select_dtypes(include=['object']).columns:
-    data[column] = label_encoder.fit_transform(data[column].astype(str))
+print("Checking for missing values:")
+print(df.isnull().sum(), "\n")
 
-# ===============================
-# ⚖️ Step 4: Feature Scaling
-# ===============================
-scaler = RobustScaler()
-scaled_data = pd.DataFrame(scaler.fit_transform(data), columns=data.columns)
+# ---------- Encode categorical columns ----------
+le = LabelEncoder()
+for col in df.select_dtypes(include=["object"]).columns:
+    df[col] = le.fit_transform(df[col].astype(str))
 
-# ===============================
-# 🔀 Step 5: Train-Test Split
-# ===============================
-# Make sure 'readmitted' is the target column in your dataset
-X = scaled_data.drop(columns=['readmitted'])
-y = scaled_data['readmitted']
+# ---------- Split data ----------
+if "readmitted" not in df.columns:
+    print("❌ The dataset must contain a 'readmitted' column (0/1).")
+    raise SystemExit(1)
 
+X = df.drop("readmitted", axis=1)
+y = df["readmitted"].astype(int)  # make labels ints for consistency
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+    X, y, test_size=0.3, random_state=42, stratify=y
 )
+print(f"Train size: {len(X_train)}, Test size: {len(X_test)}\n")
 
-# ===============================
-# 🤖 Step 6: Train Multiple Models
-# ===============================
-models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Naive Bayes": GaussianNB(),
-    "SVM": SVC(kernel='rbf', probability=True),
-    "Decision Tree": DecisionTreeClassifier(random_state=42),
-    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
+# ---------- Baseline Random Forest ----------
+print("🔹 Training baseline Random Forest...")
+base_model = RandomForestClassifier(random_state=42)
+base_model.fit(X_train, y_train)
+y_pred_base = base_model.predict(X_test)
+
+base_acc = accuracy_score(y_test, y_pred_base)
+base_cm = confusion_matrix(y_test, y_pred_base)
+base_report = classification_report(y_test, y_pred_base, output_dict=True)
+print(f"Baseline Accuracy: {base_acc:.2f}")
+print("Confusion Matrix:\n", base_cm)
+print("Classification Report:\n", classification_report(y_test, y_pred_base), "\n")
+print("base_report keys:", list(base_report.keys()), "\n")  # debug helpful
+
+# ---------- SMOTE ----------
+print("⚖️ Applying SMOTE balancing...")
+print("Before:", dict(pd.Series(y_train).value_counts()))
+smote = SMOTE(random_state=42)
+X_train_res, y_train_res = smote.fit_resample(X_train, y_train)
+print("After:", dict(pd.Series(y_train_res).value_counts()), "\n")
+
+# ---------- Grid search ----------
+print("🔍 Performing hyperparameter tuning (GridSearchCV)...")
+param_grid = {
+    "n_estimators": [100, 200],
+    "max_depth": [None, 10, 20],
+    "min_samples_split": [2, 5],
+    "min_samples_leaf": [1, 2],
+    "class_weight": [None, "balanced"]
 }
+grid = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=5, n_jobs=-1, verbose=1)
+grid.fit(X_train_res, y_train_res)
+best_model = grid.best_estimator_
+print("✅ Best Parameters Found:", grid.best_params_, "\n")
 
-results = {}
+# ---------- Evaluate tuned ----------
+print("🔹 Evaluating Tuned Random Forest...")
+y_pred_tuned = best_model.predict(X_test)
+tuned_acc = accuracy_score(y_test, y_pred_tuned)
+tuned_cm = confusion_matrix(y_test, y_pred_tuned)
+tuned_report = classification_report(y_test, y_pred_tuned, output_dict=True)
+print(f"Tuned Accuracy: {tuned_acc:.2f}")
+print("Confusion Matrix:\n", tuned_cm)
+print("Classification Report:\n", classification_report(y_test, y_pred_tuned), "\n")
+print("tuned_report keys:", list(tuned_report.keys()), "\n")  # debug helpful
 
-for name, model in models.items():
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    results[name] = {
-        "accuracy": acc,
-        "confusion_matrix": confusion_matrix(y_test, y_pred),
-        "report": classification_report(y_test, y_pred, output_dict=True)
-    }
-    print(f"\n🔹 {name}")
-    print("Accuracy:", acc)
-    print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-    print("Classification Report:\n", classification_report(y_test, y_pred))
+# ---------- Feature importance ----------
+importances = pd.Series(best_model.feature_importances_, index=X.columns)
+top_features = importances.sort_values(ascending=False).head(10)
+print("🏆 Top 10 Important Features:")
+print(top_features, "\n")
 
-# ===============================
-# 📊 Step 7: Compare Model Accuracies
-# ===============================
-results_df = pd.DataFrame({
-    "Model": [m for m in results.keys()],
-    "Accuracy": [results[m]["accuracy"] for m in results.keys()]
-})
-print("\n✅ Model Comparison Results:")
-print(results_df)
+# ---------- Safe metric getter ----------
+def get_safe_metric(report, label, metric):
+    """
+    Safely return report[label][metric] regardless of key formatting.
+    label argument can be 1 or "1" or 1.0 etc.
+    """
+    # check int/str/float versions
+    for key in (label, str(label), f"{float(label):.1f}", f"{float(label):.0f}"):
+        if key in report:
+            return report[key].get(metric, 0.0)
+    # last resort: if numeric keys exist, try them
+    for k in report.keys():
+        try:
+            if float(k) == float(label):
+                return report[k].get(metric, 0.0)
+        except Exception:
+            continue
+    return 0.0
 
-plt.figure(figsize=(8, 5))
-sns.barplot(data=results_df, x='Model', y='Accuracy', palette='coolwarm')
-plt.title("Hospital Readmission Prediction - Model Comparison")
-plt.ylabel("Accuracy")
-plt.xlabel("Model")
-plt.xticks(rotation=25)
-plt.ylim(0, 1)
-plt.tight_layout()
-plt.savefig("model_comparison_chart.png")  # save the chart for PDF
-plt.show()
+# ---------- Helper: convert matrix to table (strings) ----------
+def matrix_to_table(matrix, title, acc, report):
+    precision = get_safe_metric(report, 1, "precision")
+    recall = get_safe_metric(report, 1, "recall")
+    f1 = get_safe_metric(report, 1, "f1-score")
 
-# ===============================
-# 📄 Step 8: Export Results to PDF
-# ===============================
-def export_to_pdf(results, output_filename="readmission_results.pdf"):
-    """Exports model results and charts to a PDF report."""
-    doc = SimpleDocTemplate(output_filename, pagesize=letter)
+    data = [
+        [title],
+        ["", "Predicted 0", "Predicted 1"],
+        ["Actual 0", str(int(matrix[0][0])), str(int(matrix[0][1]))],
+        ["Actual 1", str(int(matrix[1][0])), str(int(matrix[1][1]))],
+        ["", "", ""],
+        ["Accuracy", f"{acc:.2f}", ""],
+        ["Recall (Readmitted=1)", f"{recall:.2f}", ""],
+        ["Precision (Readmitted=1)", f"{precision:.2f}", ""],
+        ["F1-Score (Readmitted=1)", f"{f1:.2f}", ""]
+    ]
+
+    t = Table(data, colWidths=[120, 80, 80])
+    t.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightblue),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+    ]))
+    return t
+
+# ---------- Export to PDF ----------
+def export_to_pdf(output_name="model_report.pdf"):
+    doc = SimpleDocTemplate(output_name, pagesize=letter)
     styles = getSampleStyleSheet()
-    flowables = []
+    elements = []
 
-    flowables.append(Paragraph("🏥 Hospital Readmission Prediction Report", styles['Title']))
-    flowables.append(Spacer(1, 12))
+    elements.append(Paragraph("Hospital Readmission Prediction Results", styles["Title"]))
+    elements.append(Spacer(1, 12))
 
-    for model_name, metrics in results.items():
-        flowables.append(Paragraph(f"<b>{model_name}</b>", styles['Heading2']))
-        flowables.append(Paragraph(f"Accuracy: {metrics['accuracy']:.4f}", styles['Normal']))
-        flowables.append(Spacer(1, 6))
+    # Performance table
+    perf = [
+        ["Metric", "Baseline Model", "Tuned Model"],
+        ["Accuracy", f"{base_acc:.2f}", f"{tuned_acc:.2f}"],
+        ["Precision (Readmitted)", f"{get_safe_metric(base_report, 1, 'precision'):.2f}", f"{get_safe_metric(tuned_report, 1, 'precision'):.2f}"],
+        ["Recall (Readmitted)", f"{get_safe_metric(base_report, 1, 'recall'):.2f}", f"{get_safe_metric(tuned_report, 1, 'recall'):.2f}"],
+        ["F1-Score (Readmitted)", f"{get_safe_metric(base_report, 1, 'f1-score'):.2f}", f"{get_safe_metric(tuned_report, 1, 'f1-score'):.2f}"]
+    ]
+    table = Table(perf, colWidths=[170, 120, 120])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightblue),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1,1), (-1,-1), "CENTER"),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 18))
 
-        # Confusion matrix table
-        cm = metrics['confusion_matrix']
-        cm_table = Table(cm.tolist(), colWidths=[60]*len(cm))
-        cm_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER')
-        ]))
-        flowables.append(Paragraph("Confusion Matrix:", styles['Normal']))
-        flowables.append(cm_table)
-        flowables.append(Spacer(1, 12))
+    # Confusion matrices with captions
+    elements.append(Paragraph("Confusion Matrices and Metrics", styles["Heading2"]))
+    elements.append(Spacer(1, 6))
+    elements.append(matrix_to_table(base_cm, "Baseline Model", base_acc, base_report))
+    elements.append(Spacer(1, 12))
+    elements.append(matrix_to_table(tuned_cm, "Tuned Model", tuned_acc, tuned_report))
 
-    flowables.append(Paragraph("<b>Model Comparison Chart:</b>", styles['Heading2']))
-    flowables.append(Spacer(1, 6))
-    flowables.append(Paragraph("See the chart image saved as 'model_comparison_chart.png'.", styles['Normal']))
+    elements.append(PageBreak())
+    elements.append(Paragraph("Top 10 Most Important Features", styles["Heading2"]))
+    feat_data = [["Feature", "Importance"]]
+    for feature, val in top_features.items():
+        feat_data.append([str(feature), f"{val:.4f}"])
+    feat_table = Table(feat_data, colWidths=[220, 140])
+    feat_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+    ]))
+    elements.append(feat_table)
 
-    doc.build(flowables)
-    print(f"\n📄 PDF report generated successfully: {output_filename}")
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Generated automatically by the Hospital Readmission Prediction System.", styles["Normal"]))
 
-# Generate the PDF report
-export_to_pdf(results)
+    try:
+        doc.build(elements)
+        print(f"📄 PDF report successfully exported as '{output_name}'")
+    except Exception as e:
+        print("❌ Error building PDF:", e)
+
+# ---------- Run export ----------
+export_to_pdf("model_report.pdf")
