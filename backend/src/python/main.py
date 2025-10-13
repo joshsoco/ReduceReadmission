@@ -1,125 +1,77 @@
-# dual_train.py
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
 import joblib
+import os
+from datetime import datetime
 
-# ======================================================
-# 🩺 LOAD AND ENCODE DATA
-# ======================================================
-data = pd.read_csv("dual_disease_data.csv")
+# --- Utility: clean column names ---
+def clean_columns(df):
+    df.columns = [col.replace('[','')
+                     .replace(']','')
+                     .replace('<','lt')
+                     .replace('>','gt')
+                     .replace(' ','_')
+                     .replace('(','')
+                     .replace(')','')
+                 for col in df.columns]
+    return df
 
-# Encode categorical variables (Gender and Disease)
-gender_encoder = LabelEncoder()
-data["Gender"] = gender_encoder.fit_transform(data["Gender"])  # Male=1, Female=0
+# --- Load model + threshold ---
+model = joblib.load("best_model_LogisticRegression.pkl")   # adjust if different
+best_threshold = joblib.load("best_threshold.pkl")
 
-disease_encoder = LabelEncoder()
-data["Disease"] = disease_encoder.fit_transform(data["Disease"])  # Hypertension=0, Pneumonia=1, etc.
-
-# Save encoders for later use
-joblib.dump(gender_encoder, 'gender_encoder.pkl')
-joblib.dump(disease_encoder, 'disease_encoder.pkl')
-
-# ======================================================
-# 🧠 MODEL 1: DISEASE PREDICTION
-# ======================================================
-print("\n🔹 TRAINING MODEL 1: Disease Prediction")
-
-# Features (exclude Disease, Readmitted, Patient_ID)
-X_disease = data.drop(["Disease", "Readmitted", "Patient_ID"], axis=1)
-y_disease = data["Disease"]
-
-# Split dataset
-X_train_d, X_test_d, y_train_d, y_test_d = train_test_split(
-    X_disease, y_disease, test_size=0.2, random_state=42
+# --- Load training columns for alignment ---
+train_df = pd.read_csv("synthetic_train_nonlinear.csv")
+X_train = pd.get_dummies(
+    train_df.drop(columns=["readmitted_binary", "readmitted_multiclass", "medication"]),
+    drop_first=True
 )
+X_train = clean_columns(X_train)
+training_columns = X_train.columns
 
-# Scale numeric features
-scaler_disease = StandardScaler()
-X_train_d = scaler_disease.fit_transform(X_train_d)
-X_test_d = scaler_disease.transform(X_test_d)
+# --- Function to run predictions on a test file ---
+def run_predictions(test_csv, dataset_name, save_csv=True):
+    print(f"\n=== Predictions for {dataset_name} ===")
 
-# Train Random Forest
-rf_disease = RandomForestClassifier(n_estimators=200, random_state=42)
-rf_disease.fit(X_train_d, y_train_d)
+    # Load test data
+    df = pd.read_csv(test_csv)
 
-# Evaluate
-y_pred_d = rf_disease.predict(X_test_d)
-print("Disease Prediction Accuracy:", accuracy_score(y_test_d, y_pred_d))
-print(classification_report(y_test_d, y_pred_d))
+    # Keep labels if present
+    y_true = df["readmitted_binary"] if "readmitted_binary" in df.columns else None
 
-# Save model + scaler
-joblib.dump(rf_disease, 'disease_model.pkl')
-joblib.dump(scaler_disease, 'disease_scaler.pkl')
+    # Drop labels + medication (not used in model)
+    X = df.drop(columns=["readmitted_binary", "readmitted_multiclass", "medication"], errors="ignore")
 
-# ======================================================
-# 🏥 MODEL 2: READMISSION PREDICTION
-# ======================================================
-print("\n🔹 TRAINING MODEL 2: Readmission Prediction")
+    # One-hot encode + clean
+    X = pd.get_dummies(X, drop_first=True)
+    X = clean_columns(X)
 
-# Features (exclude Readmitted, Patient_ID)
-X_readmit = data.drop(["Readmitted", "Patient_ID"], axis=1)
-y_readmit = data["Readmitted"]
+    # Align with training columns
+    X = X.reindex(columns=training_columns, fill_value=0)
 
-# Split dataset
-X_train_r, X_test_r, y_train_r, y_test_r = train_test_split(
-    X_readmit, y_readmit, test_size=0.2, random_state=42
-)
+    # Predict
+    y_prob = model.predict_proba(X)[:, 1]
+    y_pred = (y_prob >= best_threshold).astype(int)
 
-# Scale numeric features
-scaler_readmit = StandardScaler()
-X_train_r = scaler_readmit.fit_transform(X_train_r)
-X_test_r = scaler_readmit.transform(X_test_r)
+    # Results DataFrame
+    results = pd.DataFrame({
+        "probability": y_prob,
+        "prediction": y_pred
+    })
+    if y_true is not None:
+        results["true_label"] = y_true.values
 
-# Train Random Forest
-rf_readmit = RandomForestClassifier(n_estimators=200, random_state=42)
-rf_readmit.fit(X_train_r, y_train_r)
+    # Show first few predictions
+    print(results.head(10))
 
-# Evaluate
-y_pred_r = rf_readmit.predict(X_test_r)
-print("Readmission Prediction Accuracy:", accuracy_score(y_test_r, y_pred_r))
-print(classification_report(y_test_r, y_pred_r))
+    # Save to CSV if requested
+    if save_csv:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_csv = f"{dataset_name.replace(' ', '_').lower()}_predictions_{timestamp}.csv"
+        results.to_csv(out_csv, index=False)
+        print(f"📄 Saved predictions to {os.path.abspath(out_csv)}")
 
-# Save model + scaler
-joblib.dump(rf_readmit, 'readmission_model.pkl')
-joblib.dump(scaler_readmit, 'readmission_scaler.pkl')
+    return results
 
-# ======================================================
-# ✅ TEST PREDICTION FUNCTION
-# ======================================================
-print("\n🔹 TESTING MODELS ON NEW PATIENT")
-
-# Test single new patient
-test_patient = pd.DataFrame({
-    'Patient_ID': [9999],
-    'Age': [55],
-    'Gender': ['Female'],
-    'BMI': [26.5],
-    'Blood_Pressure': [130],
-    'Heart_Rate': [80],
-    'Glucose_Level': [90.0],
-    'Cholesterol': [220.0],
-    'Hospital_Stay_Days': [6],
-    'Previous_Admissions': [2],
-    'Disease': ['Hypertension'],  # used for readmission only
-    'Risk_Score': [0.58],
-    'Readmitted': [0]
-})
-
-# Encode and scale properly for testing
-test_patient["Gender"] = gender_encoder.transform(test_patient["Gender"])
-test_patient["Disease"] = disease_encoder.transform(test_patient["Disease"])
-
-X_disease_new = test_patient.drop(["Disease", "Readmitted", "Patient_ID"], axis=1)
-X_disease_new_scaled = scaler_disease.transform(X_disease_new)
-pred_disease = rf_disease.predict(X_disease_new_scaled)
-
-X_readmit_new = test_patient.drop(["Readmitted", "Patient_ID"], axis=1)
-X_readmit_new_scaled = scaler_readmit.transform(X_readmit_new)
-pred_readmit = rf_readmit.predict(X_readmit_new_scaled)
-
-pred_disease_name = disease_encoder.inverse_transform(pred_disease)[0]
-print(f"Disease Prediction: {pred_disease_name}")
-print(f"Readmission Prediction: {'Yes' if pred_readmit[0] == 1 else 'No'}")
+# --- Run on both test sets ---
+linear_results = run_predictions("synthetic_test_linear.csv", "Linear Test Set")
+nonlinear_results = run_predictions("synthetic_test_nonlinear.csv", "Nonlinear Test Set")
