@@ -65,7 +65,6 @@ class AuthService {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store the token based on remember me preference
       if (data.data?.token) {
         if (credentials.rememberMe) {
           localStorage.setItem('authToken', data.data.token);
@@ -74,7 +73,6 @@ class AuthService {
         }
       }
 
-      // Store admin data
       if (data.data?.admin) {
         const adminInfo = {
           ...data.data.admin,
@@ -90,25 +88,20 @@ class AuthService {
     }
   }
 
-// ...existing code...
-
   async logout(): Promise<void> {
-    // For JWT-based auth, we don't actually need to call the backend
-    // Just clear the client-side storage since JWTs are stateless
     this.clearStorage();
     console.log('User logged out successfully');
   }
 
   async logoutWithServerCall(): Promise<void> {
     try {
-      // Call backend logout endpoint if you need server-side logout tracking
       const token = this.getToken();
       if (token) {
         const response = await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: this.getAuthHeaders(),
         });
-        
+
         if (!response.ok) {
           console.warn(`Logout API returned ${response.status}: ${response.statusText}`);
         }
@@ -116,7 +109,6 @@ class AuthService {
     } catch (error) {
       console.warn('Logout API call failed:', error);
     } finally {
-      // Always clear storage regardless of API call result
       this.clearStorage();
     }
   }
@@ -126,7 +118,6 @@ class AuthService {
     sessionStorage.removeItem('authToken');
     localStorage.removeItem('user');
   }
-
 
   async getCurrentUser(): Promise<UserProfile> {
     try {
@@ -141,7 +132,6 @@ class AuthService {
         throw new Error(data.message || 'Failed to get user profile');
       }
 
-      // Update stored user data
       if (data.data?.user) {
         localStorage.setItem('user', JSON.stringify(data.data.user));
       }
@@ -167,7 +157,6 @@ class AuthService {
       }
 
       if (data.data?.token) {
-        // Update token in the same storage where it was originally stored
         if (localStorage.getItem('authToken')) {
           localStorage.setItem('authToken', data.data.token);
         } else if (sessionStorage.getItem('authToken')) {
@@ -176,7 +165,6 @@ class AuthService {
       }
     } catch (error: any) {
       console.error('Token refresh error:', error);
-      // If refresh fails, logout user
       this.logout();
       throw new Error(error.message || 'Session expired. Please login again.');
     }
@@ -196,19 +184,16 @@ class AuthService {
     if (!token) return false;
 
     try {
-      // Basic token validation - check if it's not expired
       const payload = JSON.parse(atob(token.split('.')[1]));
       const currentTime = Date.now() / 1000;
-      
+
       if (payload.exp < currentTime) {
-        // Token is expired, clear it
         this.logout();
         return false;
       }
-      
+
       return true;
     } catch (error) {
-      // Invalid token format
       this.logout();
       return false;
     }

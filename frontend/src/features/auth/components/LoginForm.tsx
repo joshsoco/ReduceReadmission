@@ -40,7 +40,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div className={`w-full max-w-md space-y-6 ${className}`}>
-      {/* Header */}
+      {}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Hospital Readmission</h1>
         <p className="text-muted-foreground">
@@ -48,7 +48,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </p>
       </div>
 
-      {/* Error Alert */}
+      {}
       {viewModel.status === "error" && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -58,9 +58,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </Alert>
       )}
 
-      {/* Form */}
+      {}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Email */}
+        {}
         <div className="space-y-2">
           <Label htmlFor="email">Email Address</Label>
           <div className="relative">
@@ -80,7 +80,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           )}
         </div>
 
-        {/* Password */}
+        {}
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
           <div className="relative">
@@ -107,7 +107,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           )}
         </div>
 
-        {/* Remember Me */}
+        {}
         <div className="flex items-center space-x-2">
           <Checkbox
             id="rememberMe"
@@ -122,7 +122,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </Label>
         </div>
 
-        {/* Submit */}
+        {}
         <Button
           type="submit"
           className="w-full"

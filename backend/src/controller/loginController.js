@@ -18,7 +18,6 @@ const generateToken = (user, userType) => {
   );
 };
 
-// Log login attempt
 const logLoginAttempt = async (userId, userType, email, ipAddress, userAgent, status, failureReason = null) => {
   try {
     await Login.create({
@@ -35,12 +34,8 @@ const logLoginAttempt = async (userId, userType, email, ipAddress, userAgent, st
   }
 };
 
-// @desc    Admin login
-// @route   POST /api/auth/admin/login
-// @access  Public
 export const adminLogin = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -54,9 +49,8 @@ export const adminLogin = async (req, res) => {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
-    // Find admin by email
     const admin = await Admin.findOne({ email }).select('+password');
-    
+
     if (!admin) {
       await logLoginAttempt(null, 'Admin', email, ipAddress, userAgent, 'failed', 'Admin not found');
       return res.status(401).json({
@@ -65,7 +59,6 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    // Check if admin is active
     if (!admin.isActive) {
       await logLoginAttempt(admin._id, 'Admin', email, ipAddress, userAgent, 'failed', 'Account deactivated');
       return res.status(401).json({
@@ -74,9 +67,8 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    // Check password
     const isPasswordMatch = await admin.matchPassword(password);
-    
+
     if (!isPasswordMatch) {
       await logLoginAttempt(admin._id, 'Admin', email, ipAddress, userAgent, 'failed', 'Invalid password');
       return res.status(401).json({
@@ -87,7 +79,6 @@ export const adminLogin = async (req, res) => {
 
     await admin.updateLastLogin();
 
-    // Log successful login
     await logLoginAttempt(admin._id, 'Admin', email, ipAddress, userAgent, 'success');
 
     const token = generateToken(admin, 'Admin');
@@ -116,9 +107,6 @@ export const adminLogin = async (req, res) => {
   }
 };
 
-// @desc    Get current admin profile
-// @route   GET /api/auth/me
-// @access  Private
 export const getMe = async (req, res) => {
   try {
     const admin = await Admin.findById(req.user.id).select('-password');
@@ -154,19 +142,14 @@ export const getMe = async (req, res) => {
     });
   }
 };
-// @desc    Logout admin
-// @route   POST /api/auth/logout
-// @access  Private
 export const logout = async (req, res) => {
   try {
-    // Log the logout attempt if needed
     const admin = await Admin.findById(req.user.id).select('-password');
-    
+
     if (admin) {
       console.log(`Admin ${admin.email} logged out successfully`);
     }
 
-    // In a stateless JWT system, logout is handled client-side by removing the token
     res.status(200).json({
       success: true,
       message: 'Logout successful'
@@ -181,9 +164,6 @@ export const logout = async (req, res) => {
   }
 };
 
-// @desc    Refresh token
-// @route   POST /api/auth/refresh
-// @access  Private
 export const refreshToken = async (req, res) => {
   try {
     const admin = await Admin.findById(req.user.id).select('-password');

@@ -1,7 +1,6 @@
 import express from 'express';
 import { body } from 'express-validator';
 
-// Controllers
 import {
   adminLogin,
   getMe,
@@ -19,7 +18,10 @@ import {
   deleteAdmin
 } from '../controller/adminController.js';
 
-// Middleware
+import {
+  uploadExcelData
+} from '../controller/uploadController.js';
+
 import {
   adminAuth,
   superAdminAuth,
@@ -35,11 +37,6 @@ import {
 
 const router = express.Router();
 
-// =============================================================================
-// AUTHENTICATION ROUTES (Admin Only)
-// =============================================================================
-
-// Validation for login
 const loginValidation = [
   body('email')
     .isEmail()
@@ -50,19 +47,12 @@ const loginValidation = [
     .withMessage('Password must be at least 6 characters long')
 ];
 
-// Admin authentication routes
 router.post('/auth/admin/login', authLimiter, loginValidation, adminLogin);
 
-// General authentication routes
 router.get('/auth/me', verifyToken, getMe);
 router.post('/auth/logout', verifyToken, logout);
 router.post('/auth/refresh', verifyToken, refreshToken);
 
-// =============================================================================
-// ADMIN MANAGEMENT ROUTES
-// =============================================================================
-
-// Validation for admin profile update
 const adminProfileValidation = [
   body('name')
     .optional()
@@ -79,7 +69,6 @@ const adminProfileValidation = [
     .withMessage('Avatar must be a valid URL')
 ];
 
-// Validation for password change
 const passwordChangeValidation = [
   body('currentPassword')
     .notEmpty()
@@ -92,7 +81,6 @@ const passwordChangeValidation = [
     .withMessage('Please confirm your new password')
 ];
 
-// Validation for creating admin
 const createAdminValidation = [
   body('name')
     .isLength({ min: 2, max: 50 })
@@ -110,22 +98,29 @@ const createAdminValidation = [
     .withMessage('Role must be either admin or superadmin')
 ];
 
-// Admin profile routes
 router.get('/admin/profile', adminAuth, getProfile);
 router.put('/admin/profile', apiLimiter, adminAuth, adminProfileValidation, updateProfile);
 router.put('/admin/change-password', strictLimiter, adminAuth, passwordChangeValidation, changePassword);
 
-// Super admin routes for managing other admins
 router.get('/admin/all', adminAuth, superAdminAuth, getAllAdmins);
 router.post('/admin/create', strictLimiter, superAdminAuth, createAdminValidation, createAdmin);
 router.put('/admin/:id/status', apiLimiter, superAdminAuth, updateAdminStatus);
 router.delete('/admin/:id', strictLimiter, superAdminAuth, deleteAdmin);
 
-// =============================================================================
-// HEALTH CHECK & API INFO
-// =============================================================================
+const uploadValidation = [
+  body('fileName')
+    .notEmpty()
+    .withMessage('File name is required'),
+  body('data')
+    .isArray()
+    .withMessage('Data must be an array'),
+  body('rowCount')
+    .isInt({ min: 1 })
+    .withMessage('Row count must be a positive integer')
+];
 
-// API Health check
+router.post('/upload/excel', apiLimiter, adminAuth, uploadValidation, uploadExcelData);
+
 router.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -135,7 +130,6 @@ router.get('/health', (req, res) => {
   });
 });
 
-// API Information
 router.get('/info', generalLimiter, (req, res) => {
   res.status(200).json({
     success: true,
@@ -164,7 +158,6 @@ router.get('/info', generalLimiter, (req, res) => {
   });
 });
 
-// 404 handler for undefined routes
 router.use((req, res) => {
   res.status(404).json({
     success: false,

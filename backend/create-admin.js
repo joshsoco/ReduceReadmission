@@ -20,8 +20,8 @@ const createInitialAdmin = async () => {
     // Create initial super admin
     const superAdmin = await Admin.create({
       name: 'Super Administrator',
-      email: 'superadmin@admin.com',
-      password: 'SuperAdmin123!',
+      email: 'admin1@gmail.com',
+      password: 'admin123!',
       role: 'superadmin'
     });
 

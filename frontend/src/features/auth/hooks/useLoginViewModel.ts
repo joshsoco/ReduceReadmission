@@ -60,7 +60,6 @@ export const useLoginViewModel = () => {
 
   const updateField = (field: keyof FormData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear validation error for this field
     if (validationErrors[field as keyof ValidationErrors]) {
       setValidationErrors((prev) => {
         const newErrors = { ...prev };
@@ -68,7 +67,6 @@ export const useLoginViewModel = () => {
         return newErrors;
       });
     }
-    // Clear general error message
     if (errorMessage) {
       setErrorMessage('');
     }

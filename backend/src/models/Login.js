@@ -38,13 +38,12 @@ const loginSchema = new mongoose.Schema({
         city: String,
         timezone: String
     }
-}, { 
+}, {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
 });
 
-// Index for faster queries
 loginSchema.index({ userId: 1, createdAt: -1 });
 loginSchema.index({ ipAddress: 1, createdAt: -1 });
 loginSchema.index({ email: 1, createdAt: -1 });

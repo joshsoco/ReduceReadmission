@@ -1,11 +1,10 @@
 import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
 
-// Middleware to verify JWT token
 export const verifyToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
@@ -13,8 +12,8 @@ export const verifyToken = async (req, res, next) => {
       });
     }
 
-    const token = authHeader.substring(7); // Remove "Bearer " prefix
-    
+    const token = authHeader.substring(7);
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -22,10 +21,9 @@ export const verifyToken = async (req, res, next) => {
       });
     }
 
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
-    
+
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -48,10 +46,8 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
-// Middleware to ensure user is authenticated admin
 export const adminAuth = async (req, res, next) => {
   try {
-    // Verify the token first
     await new Promise((resolve, reject) => {
       verifyToken(req, res, (error) => {
         if (error) reject(error);
@@ -59,9 +55,8 @@ export const adminAuth = async (req, res, next) => {
       });
     });
 
-    // Check if user exists and is admin
     const admin = await Admin.findById(req.user.id).select('-password');
-    
+
     if (!admin) {
       return res.status(404).json({
         success: false,
@@ -76,7 +71,6 @@ export const adminAuth = async (req, res, next) => {
       });
     }
 
-    // Verify user type is admin
     if (req.user.userType !== 'Admin') {
       return res.status(403).json({
         success: false,
@@ -95,10 +89,8 @@ export const adminAuth = async (req, res, next) => {
   }
 };
 
-// Middleware to ensure user is super admin
 export const superAdminAuth = async (req, res, next) => {
   try {
-    // First check admin auth
     await new Promise((resolve, reject) => {
       adminAuth(req, res, (error) => {
         if (error) reject(error);
@@ -106,7 +98,6 @@ export const superAdminAuth = async (req, res, next) => {
       });
     });
 
-    // Check if admin has superadmin role
     if (req.admin.role !== 'superadmin') {
       return res.status(403).json({
         success: false,
