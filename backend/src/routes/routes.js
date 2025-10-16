@@ -23,6 +23,14 @@ import {
 } from '../controller/uploadController.js';
 
 import {
+  predictManualEntry,
+  saveManualEntry,
+  getRecentEntries,
+  deleteManualEntry,
+  validateManualEntry
+} from '../controller/manualEntryController.js';
+
+import {
   adminAuth,
   superAdminAuth,
   verifyToken
@@ -120,6 +128,11 @@ const uploadValidation = [
 ];
 
 router.post('/upload/excel', apiLimiter, adminAuth, uploadValidation, uploadExcelData);
+
+router.post('/manual-entry/predict', apiLimiter, verifyToken, validateManualEntry, predictManualEntry);
+router.post('/manual-entry/save', strictLimiter, adminAuth, validateManualEntry, saveManualEntry);
+router.get('/manual-entry/recent', apiLimiter, verifyToken, getRecentEntries);
+router.delete('/manual-entry/:id', strictLimiter, adminAuth, deleteManualEntry);
 
 router.get('/health', (req, res) => {
   res.status(200).json({
