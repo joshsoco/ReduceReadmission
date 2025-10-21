@@ -31,6 +31,12 @@ import {
 } from '../controller/manualEntryController.js';
 
 import {
+  getSettings,
+  updateSettings,
+  changePasswordSettings
+} from '../controller/settingsController.js';
+
+import {
   adminAuth,
   superAdminAuth,
   verifyToken
@@ -170,6 +176,33 @@ router.get('/info', generalLimiter, (req, res) => {
     }
   });
 });
+
+const settingsValidation = [
+  body('name')
+    .optional()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Name must be between 2 and 50 characters'),
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Please provide a valid email')
+];
+
+const settingsPasswordValidation = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
+  body('newPassword')
+    .isLength({ min: 6 })
+    .withMessage('New password must be at least 6 characters'),
+  body('confirmPassword')
+    .notEmpty()
+    .withMessage('Please confirm your new password')
+];
+
+router.get('/settings', verifyToken, getSettings);
+router.put('/settings/password', strictLimiter, verifyToken, settingsPasswordValidation, changePasswordSettings);
 
 router.use((req, res) => {
   res.status(404).json({
