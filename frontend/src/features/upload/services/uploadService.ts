@@ -37,7 +37,19 @@ class UploadService {
       reader.onload = (e) => {
         try {
           const data = e.target?.result;
-          const workbook = XLSX.read(data, { type: 'binary' });
+          
+          // Check if file is CSV
+          const isCSV = file.name.toLowerCase().endsWith('.csv');
+          
+          let workbook: XLSX.WorkBook;
+          
+          if (isCSV) {
+            // Parse CSV file
+            workbook = XLSX.read(data, { type: 'binary', raw: true });
+          } else {
+            // Parse Excel file
+            workbook = XLSX.read(data, { type: 'binary' });
+          }
 
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
@@ -45,7 +57,7 @@ class UploadService {
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           if (jsonData.length === 0) {
-            reject(new Error('Excel file is empty'));
+            reject(new Error(`${isCSV ? 'CSV' : 'Excel'} file is empty`));
             return;
           }
 
@@ -69,7 +81,7 @@ class UploadService {
             rowCount: dataObjects.length,
           });
         } catch (error) {
-          reject(new Error('Failed to read Excel file: ' + (error as Error).message));
+          reject(new Error('Failed to read file: ' + (error as Error).message));
         }
       };
 
@@ -83,6 +95,9 @@ class UploadService {
 
   async uploadFile(excelData: ExcelFileData): Promise<UploadResponse> {
     try {
+      // TODO: This will send data to backend ML model for predictions
+      // Once ML model is trained configure the endpoint
+      
       const response = await fetch(`${API_BASE_URL}/upload/excel`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
@@ -101,6 +116,26 @@ class UploadService {
       if (!response.ok) {
         throw new Error(result.message || 'Upload failed');
       }
+
+      // TODO: Backend should return predictions in this format:
+      // {
+      //   success: true,
+      //   message: 'Predictions generated successfully',
+      //   data: {
+      //     fileName: string,
+      //     rowCount: number,
+      //     predictions: [
+      //       {
+      //         patientId: string,
+      //         riskLevel: 'High' | 'Medium' | 'Low',
+      //         riskScore: number,
+      //         probability: number,
+      //         contributingFactors: string[],
+      //         recommendation: string
+      //       }
+      //     ]
+      //   }
+      // }
 
       return {
         success: true,

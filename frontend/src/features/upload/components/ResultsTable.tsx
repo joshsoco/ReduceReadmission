@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, FileDown } from 'lucide-react';
+import { Download, FileDown, Brain } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,10 @@ export interface PredictionResult {
   risk: 'High' | 'Medium' | 'Low';
   probability: number;
   reasons: string[];
+  // TODO: Add these fields when ML backend is ready
+  // riskScore?: number;
+  // recommendation?: string;
+  // confidence?: number;
 }
 
 interface ResultsTableProps {
@@ -43,6 +47,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
     doc.text(`Total Predictions: ${results.length}`, 14, 34);
+    // TODO: Add ML model info when ready
+    // doc.text(`ML Model: [Model Name] v[Version]`, 14, 40);
 
     const tableData = results.map(result => [
       result.no,
@@ -50,10 +56,13 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       result.risk,
       `${(result.probability * 100).toFixed(1)}%`,
       result.reasons.join('; ')
+      // TODO: Add risk score and recommendation columns
+      // result.riskScore?.toFixed(2),
+      // result.recommendation
     ]);
 
     autoTable(doc, {
-      head: [['No.', 'Patient ID', 'Risk', 'Probability', 'Reasons']],
+      head: [['No.', 'Patient ID', 'Risk', 'Probability', 'Reasons']], // TODO: Add 'Score', 'Recommendation'
       body: tableData,
       startY: 40,
       theme: 'grid',
@@ -68,7 +77,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       }
     });
 
-    doc.save(`${fileName}_results.pdf`);
+    doc.save(`${fileName}_AI_predictions.pdf`);
   };
 
   const exportToExcel = () => {
@@ -78,11 +87,15 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       'Risk Level': result.risk,
       'Probability': `${(result.probability * 100).toFixed(1)}%`,
       'Contributing Factors': result.reasons.join(', ')
+      // TODO: Add these columns when ML backend is ready
+      // 'Risk Score': result.riskScore,
+      // 'Recommendation': result.recommendation,
+      // 'Confidence': result.confidence
     }));
 
     const ws = XLSX.utils.json_to_sheet(excelData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Predictions');
+    XLSX.utils.book_append_sheet(wb, ws, 'AI Predictions');
 
     ws['!cols'] = [
       { wch: 8 },
@@ -90,9 +103,10 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       { wch: 12 },
       { wch: 12 },
       { wch: 50 }
+      // TODO: Add widths for new columns
     ];
 
-    XLSX.writeFile(wb, `${fileName}_results.xlsx`);
+    XLSX.writeFile(wb, `${fileName}_AI_predictions.xlsx`);
   };
 
   if (results.length === 0) {
@@ -104,10 +118,17 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Prediction Results</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-600" />
+              AI Prediction Results
+            </CardTitle>
             <CardDescription>
-              Showing {results.length} patient prediction{results.length !== 1 ? 's' : ''}
+              Showing {results.length} patient prediction{results.length !== 1 ? 's' : ''} from machine learning analysis
             </CardDescription>
+            {/* TODO: Add model info when ready */}
+            {/* <p className="text-xs text-gray-500 mt-1">
+              Model: [Model Name] | Accuracy: [XX]% | Last Updated: [Date]
+            </p> */}
           </div>
           <div className="flex gap-2">
             <Button
@@ -141,6 +162,9 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Risk</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Probability</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Contributing Factors</th>
+                {/* TODO: Add these columns when ML backend is ready */}
+                {/* <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Score</th> */}
+                {/* <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Recommendation</th> */}
               </tr>
             </thead>
             <tbody>
@@ -165,6 +189,13 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                       ))}
                     </ul>
                   </td>
+                  {/* TODO: Add these cells when ML backend is ready */}
+                  {/* <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    {result.riskScore?.toFixed(2)}
+                  </td> */}
+                  {/* <td className="px-4 py-3 text-sm text-gray-600">
+                    {result.recommendation}
+                  </td> */}
                 </tr>
               ))}
             </tbody>

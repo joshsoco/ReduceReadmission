@@ -50,15 +50,27 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
 
   useEffect(() => {
     if (status === 'success' && excelData && file && onUploadSuccess) {
-      onUploadSuccess(excelData, file.name);
+      // TODO: Once ML backend is ready, pass actual predictions
+      // For now, passing raw data
+      onUploadSuccess(excelData.data, file.name);
     }
   }, [status, excelData, file, onUploadSuccess]);
 
   const isProcessing = status === 'validating' || status === 'reading' || status === 'uploading';
 
+  // Get file type icon
+  const getFileIcon = () => {
+    if (!file) return <Upload className="w-16 h-16 text-gray-400" />;
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith('.csv')) {
+      return <File className="w-5 h-5 text-green-600 mt-0.5" />;
+    }
+    return <File className="w-5 h-5 text-blue-600 mt-0.5" />;
+  };
+
   return (
     <div className="space-y-6">
-      {}
+      {/* API Status Badge */}
       <div className="flex justify-end">
         <Badge
           variant={apiStatus.isConnected ? 'success' : 'destructive'}
@@ -73,7 +85,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
         </Badge>
       </div>
 
-      {}
+      {/* Upload Card */}
       <Card className="border-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -81,11 +93,11 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             Upload Patient Data
           </CardTitle>
           <CardDescription>
-            Upload an Excel file (.xls or .xlsx) containing patient readmission data for analysis
+            Upload a CSV or Excel file (.csv, .xls, .xlsx) containing patient readmission data for AI-powered analysis
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {}
+          {/* Drag & Drop Area */}
           <div
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
@@ -106,7 +118,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xls,.xlsx"
+              accept=".xls,.xlsx,.csv"
               onChange={handleFileSelect}
               className="hidden"
               disabled={isProcessing}
@@ -119,10 +131,15 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                   <div className="space-y-2">
                     <p className="text-lg font-medium text-gray-700">
                       {status === 'validating' && 'Validating file...'}
-                      {status === 'reading' && 'Reading Excel file...'}
-                      {status === 'uploading' && 'Uploading data...'}
+                      {status === 'reading' && 'Reading file...'}
+                      {status === 'uploading' && 'Processing with AI model...'}
                     </p>
                     <Progress value={status === 'uploading' ? 75 : 50} className="w-64" />
+                    {status === 'uploading' && (
+                      <p className="text-sm text-gray-500">
+                        Running predictions on {excelData?.rowCount} records...
+                      </p>
+                    )}
                   </div>
                 </>
               ) : (
@@ -137,11 +154,11 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                   </div>
                   <div className="space-y-2">
                     <p className="text-lg font-medium text-gray-700">
-                      {isDragging ? 'Drop your file here' : 'Drag and drop your Excel file here'}
+                      {isDragging ? 'Drop your file here' : 'Drag and drop your file here'}
                     </p>
                     <p className="text-sm text-gray-500">or click to browse files</p>
                     <p className="text-xs text-gray-400">
-                      Accepted formats: .xls, .xlsx (Max 10MB)
+                      Accepted formats: CSV, Excel (.csv, .xls, .xlsx) - Max 10MB
                     </p>
                   </div>
                 </>
@@ -149,11 +166,11 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             </div>
           </div>
 
-          {}
+          {/* File Info Display */}
           {file && validationResult?.isValid && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <File className="w-5 h-5 text-blue-600 mt-0.5" />
+                {getFileIcon()}
                 <div className="flex-1 space-y-2">
                   <div className="flex items-start justify-between">
                     <div>
@@ -172,6 +189,9 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                       <p>
                         <span className="font-medium">Columns:</span> {excelData.headers?.length}
                       </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Ready for AI prediction analysis
+                      </p>
                     </div>
                   )}
                 </div>
@@ -179,7 +199,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             </div>
           )}
 
-          {}
+          {/* Error Alert */}
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -187,7 +207,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             </Alert>
           )}
 
-          {}
+          {/* Success Alert */}
           {status === 'success' && uploadResponse && (
             <Alert className="border-green-200 bg-green-50 text-green-900">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -197,13 +217,15 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                   <div className="mt-2 text-sm">
                     <p>File: {uploadResponse.data.fileName}</p>
                     <p>Processed {uploadResponse.data.rowCount} records</p>
+                    {/* TODO: Show prediction summary when ML backend is ready */}
+                    {/* <p>High Risk: {uploadResponse.data.predictions?.filter(p => p.riskLevel === 'High').length}</p> */}
                   </div>
                 )}
               </AlertDescription>
             </Alert>
           )}
 
-          {}
+          {/* Action Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Button
               onClick={openFilePicker}
@@ -212,7 +234,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
               variant="default"
             >
               <Upload className="w-4 h-4" />
-              Upload Excel
+              Upload File
             </Button>
 
             <Button
@@ -235,7 +257,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             </Button>
           </div>
 
-          {}
+          {/* Bottom Actions */}
           <div className="flex justify-between items-center pt-4 border-t">
             <Button
               onClick={downloadTemplate}
@@ -260,7 +282,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
             )}
           </div>
 
-          {}
+          {/* Process Button - Shows when file is loaded */}
           {excelData && status === 'idle' && (
             <div className="pt-4">
               <Button
@@ -269,8 +291,12 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                 size="lg"
               >
                 <Upload className="w-5 h-5" />
-                Process and Analyze Data
+                Process and Analyze Data with AI
               </Button>
+              <p className="text-xs text-center text-gray-500 mt-2">
+                {/* TODO: Remove this note when ML model is ready */}
+                Note: ML prediction model is currently in development
+              </p>
             </div>
           )}
         </CardContent>

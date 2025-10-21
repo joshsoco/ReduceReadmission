@@ -146,7 +146,7 @@ export const DashboardPage: React.FC = () => {
               <li className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                 <span>
-                  <strong>File Requirements:</strong> File should be in .xls or .xlsx format (maximum 10MB)
+                  <strong>File Requirements:</strong> File should be in .xls, .xlsx or CSV format (maximum 10MB)
                 </span>
               </li>
               <li className="flex items-start gap-3">

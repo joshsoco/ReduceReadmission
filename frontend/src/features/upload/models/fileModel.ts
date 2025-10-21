@@ -20,9 +20,11 @@ export class FileModel {
   private static readonly ACCEPTED_TYPES = [
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv', // Added CSV support
+    'application/csv',
   ];
 
-  private static readonly ACCEPTED_EXTENSIONS = ['.xls', '.xlsx'];
+  private static readonly ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.csv']; // Added .csv
 
   private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -42,7 +44,7 @@ export class FileModel {
     if (!hasValidExtension) {
       return {
         isValid: false,
-        error: 'Invalid file type. Please upload an Excel file (.xls or .xlsx)',
+        error: 'Invalid file type. Please upload an Excel or CSV file (.xls, .xlsx, or .csv)', // Updated error message
       };
     }
 
