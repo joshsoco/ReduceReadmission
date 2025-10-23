@@ -132,6 +132,13 @@ cd AdminTemplate_MERN
 ```bash
 cd backend
 npm install
+python -m venv venv
+source venv/bin/activate #Mac / Linux
+venv\Scripts\activate #Windows
+
+pip install -r requirements.txt #install python dependencies
+
+uvicorn app:app --reload #run FastAPI
 ```
 
 Create `.env` file in `backend/` directory:

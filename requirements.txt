@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pandas
+joblib
+matplotlib
+seaborn
+shap
+scikit-learn     # if you use it for model loading or prediction
+numpy            # shap and matplotlib rely on it
