@@ -49,12 +49,10 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
   } = useUploadViewModel();
 
   useEffect(() => {
-    if (status === 'success' && excelData && file && onUploadSuccess) {
-      // TODO: Once ML backend is ready, pass actual predictions
-      // For now, passing raw data
-      onUploadSuccess(excelData.data, file.name);
+    if (status === 'success' && uploadResponse?.data && onUploadSuccess) {
+      onUploadSuccess(uploadResponse.data, file?.name || 'upload');
     }
-  }, [status, excelData, file, onUploadSuccess]);
+  }, [status, uploadResponse, file, onUploadSuccess]);
 
   const isProcessing = status === 'validating' || status === 'reading' || status === 'uploading';
 
