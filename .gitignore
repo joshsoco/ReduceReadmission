@@ -1,2 +1,7 @@
 .env
-node_modules/
+node_modules/cd
+
+backend/node_modules
+backend/.env
+backend/dist
+backend/venv
