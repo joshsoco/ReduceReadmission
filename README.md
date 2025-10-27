@@ -1,5 +1,3 @@
-## Installation
-## env important File
 ### 1. Clone Repository
 ```bash
 git clone https://github.com/joshsoco/ReduceReadmission.git
@@ -47,17 +45,18 @@ npm run dev
 ```
 Runs on `http://localhost:5000`
 
-### 3. Python ML Service
-
 ```bash
+### 3. Python ML Service (FastAPI)
+
 cd backend/src/python
 
-# Create virtual environment (Optional)
+# Create venv (Optional)
 python -m venv venv
 
-# Windows:
+# Windows
 venv\Scripts\activate
-# Mac/Linux:
+
+# macOS/Linux
 source venv/bin/activate
 
 # Install dependencies
@@ -88,7 +87,7 @@ VITE_PYTHON_ML_API=http://localhost:8000
 **Start Development Server:**
 ```bash
 npm run dev
-```
+
 Runs on `http://localhost:5173`
 
 ### 5. Access Application
@@ -96,3 +95,4 @@ Runs on `http://localhost:5173`
 Navigate to `http://localhost:5173` and login with:
 - **Email:** admin1@gmail.com
 - **Password:** admin123!
+```
