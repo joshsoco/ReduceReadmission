@@ -60,63 +60,37 @@ class ManualEntryService {
   }
 
   async saveEntry(formData: PatientFormData, prediction?: PredictionResult): Promise<SavedEntry> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/manual-entry/save`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ formData, prediction }),
-      });
+    const savedEntry: SavedEntry = {
+      ...formData,
+      prediction,
+      id: `ME-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: new Date().toISOString(),
+    };
 
-      const result: SaveResponse = await response.json();
+    // Save to localStorage
+    const existingEntries = this.getLocalEntries();
+    existingEntries.unshift(savedEntry);
+    const limitedEntries = existingEntries.slice(0, 20); // Keep last 20 entries
+    localStorage.setItem('manualEntries', JSON.stringify(limitedEntries));
 
-      if (!response.ok) {
-        throw new Error(result.message || 'Save failed');
-      }
-
-      if (!result.data) {
-        throw new Error('No data received');
-      }
-
-      return result.data;
-    } catch (error) {
-      console.error('Save error:', error);
-      throw error;
-    }
+    return savedEntry;
   }
 
   async getRecentEntries(limit: number = 5): Promise<SavedEntry[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/manual-entry/recent?limit=${limit}`, {
-        method: 'GET',
-        headers: this.getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Failed to fetch entries');
-      }
-
-      return result.data || [];
-    } catch (error) {
-      console.error('Fetch entries error:', error);
-      return [];
-    }
+    const entries = this.getLocalEntries();
+    return entries.slice(0, limit);
   }
 
   async deleteEntry(id: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/manual-entry/${id}`, {
-        method: 'DELETE',
-        headers: this.getAuthHeaders(),
-      });
+    const entries = this.getLocalEntries();
+    const filtered = entries.filter(entry => entry.id !== id);
+    localStorage.setItem('manualEntries', JSON.stringify(filtered));
+    return true;
+  }
 
-      const result = await response.json();
-      return result.success;
-    } catch (error) {
-      console.error('Delete error:', error);
-      return false;
-    }
+  private getLocalEntries(): SavedEntry[] {
+    const stored = localStorage.getItem('manualEntries');
+    return stored ? JSON.parse(stored) : [];
   }
 
   exportToPDF(formData: PatientFormData, prediction: PredictionResult): void {

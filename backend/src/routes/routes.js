@@ -49,6 +49,14 @@ import {
   strictLimiter
 } from '../middleware/rateLimiter.js';
 
+import {
+  saveUploadHistory,
+  getUploadHistory,
+  getHistoryById,
+  deleteHistory,
+  getHistoryStats
+} from '../controller/historyController.js';
+
 const router = express.Router();
 
 const loginValidation = [
@@ -203,6 +211,21 @@ const settingsPasswordValidation = [
 
 router.get('/settings', verifyToken, getSettings);
 router.put('/settings/password', strictLimiter, verifyToken, settingsPasswordValidation, changePasswordSettings);
+
+
+const saveHistoryValidation = [
+  body('fileName').notEmpty().withMessage('File name is required'),
+  body('recordCount').isInt({ min: 0 }).withMessage('Record count must be a non-negative integer'),
+  body('highRiskCount').isInt({ min: 0 }).withMessage('High risk count must be a non-negative integer'),
+  body('mediumRiskCount').isInt({ min: 0 }).withMessage('Medium risk count must be a non-negative integer'),
+  body('lowRiskCount').isInt({ min: 0 }).withMessage('Low risk count must be a non-negative integer'),
+];
+
+router.post('/history', apiLimiter, verifyToken, saveHistoryValidation, saveUploadHistory);
+router.get('/history', apiLimiter, verifyToken, getUploadHistory);
+router.get('/history/stats', apiLimiter, verifyToken, getHistoryStats);
+router.get('/history/:id', apiLimiter, verifyToken, getHistoryById);
+router.delete('/history/:id', strictLimiter, verifyToken, deleteHistory);
 
 router.use((req, res) => {
   res.status(404).json({

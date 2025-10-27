@@ -11,7 +11,8 @@ export const uploadExcelData = async (req, res) => {
       });
     }
 
-    const { fileName, fileSize, headers, data, rowCount, timestamp } = req.body;
+    const { fileName, fileSize, headers, data, rowCount, timestamp, disease, predictions } = req.body;
+    const user = req.user;
 
     if (!fileName || !data || !rowCount) {
       return res.status(400).json({
@@ -20,20 +21,19 @@ export const uploadExcelData = async (req, res) => {
       });
     }
 
-    const predictions = data.map((row, index) => ({
-      ...row,
-      prediction: Math.random() > 0.5 ? 'High Risk' : 'Low Risk',
-      probability: Math.random(),
-      rowNumber: index + 1
-    }));
+    console.log('Upload processed for user:', user.id);
+    console.log('File:', fileName, 'Rows:', rowCount);
 
+    // DO NOT save history here - let frontend handle it via /api/history endpoint
+    
     res.status(200).json({
       success: true,
       message: 'File uploaded and processed successfully',
       data: {
         fileName,
         rowCount,
-        predictions,
+        predictions: predictions || [],
+        disease: disease || 'Unknown',
         uploadId: `upload_${Date.now()}`
       }
     });

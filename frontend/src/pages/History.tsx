@@ -1,87 +1,268 @@
-import React from 'react';
-import { History as HistoryIcon, Clock, FileSpreadsheet, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { History as HistoryIcon, Clock, FileSpreadsheet, CheckCircle2, AlertCircle, TrendingUp, Loader2, Trash2, MoreVertical, Download, FileDown } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/Navbar';
+import { historyService, HistoryItem, HistoryStats } from '@/features/history/services/historyService';
+import { authService } from '@/features/auth/services/authService';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export const HistoryPage: React.FC = () => {
-  const historyItems = [
-    {
-      id: 1,
-      fileName: 'patients_data_oct_2025.xlsx',
-      uploadDate: '2025-10-15',
-      uploadTime: '14:30',
-      recordCount: 156,
-      highRiskCount: 23,
-      status: 'completed',
-      accuracy: 94.2,
-    },
-    {
-      id: 2,
-      fileName: 'batch_analysis_september.xlsx',
-      uploadDate: '2025-09-28',
-      uploadTime: '10:15',
-      recordCount: 203,
-      highRiskCount: 31,
-      status: 'completed',
-      accuracy: 93.8,
-    },
-    {
-      id: 3,
-      fileName: 'weekly_patient_data_w40.xlsx',
-      uploadDate: '2025-10-08',
-      uploadTime: '09:45',
-      recordCount: 89,
-      highRiskCount: 12,
-      status: 'completed',
-      accuracy: 95.1,
-    },
-    {
-      id: 4,
-      fileName: 'emergency_admissions_oct.xlsx',
-      uploadDate: '2025-10-12',
-      uploadTime: '16:20',
-      recordCount: 67,
-      highRiskCount: 18,
-      status: 'completed',
-      accuracy: 92.5,
-    },
-    {
-      id: 5,
-      fileName: 'patient_cohort_q4.xlsx',
-      uploadDate: '2025-10-01',
-      uploadTime: '11:30',
-      recordCount: 421,
-      highRiskCount: 67,
-      status: 'completed',
-      accuracy: 94.7,
-    },
-  ];
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statistics, setStatistics] = useState<HistoryStats>({
+    totalUploads: 0,
+    totalRecords: 0,
+    totalHighRisk: 0,
+    totalMediumRisk: 0,
+    totalLowRisk: 0
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [diseaseFilter, setDiseaseFilter] = useState<string>('all');
+  
+  // Track if we're already loading to prevent duplicate requests
+  const isLoadingRef = useRef(false);
+
+  const user = authService.getUser();
+  const canDelete = user?.role === 'admin' || user?.role === 'superadmin';
+
+  useEffect(() => {
+    loadHistory();
+  }, [currentPage, diseaseFilter]);
+
+  const loadHistory = async () => {
+    // Prevent duplicate simultaneous requests
+    if (isLoadingRef.current) {
+      console.log('History already loading, skipping duplicate request');
+      return;
+    }
+
+    isLoadingRef.current = true;
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await historyService.getHistory(currentPage, 20, diseaseFilter);
+      
+      setHistoryItems(response.data.history);
+      setStatistics(response.data.statistics);
+      setTotalPages(response.data.pagination.totalPages);
+    } catch (err) {
+      setError((err as Error).message);
+      console.error('Error loading history:', err);
+    } finally {
+      setIsLoading(false);
+      isLoadingRef.current = false;
+    }
+  };
+
+  const handleDelete = async (id: string, fileName: string) => {
+    if (!confirm(`Are you sure you want to delete "${fileName}"?`)) {
+      return;
+    }
+
+    try {
+      await historyService.deleteHistory(id);
+      await loadHistory();
+    } catch (err) {
+      alert(`Failed to delete: ${(err as Error).message}`);
+    }
+  };
+
+  // Export functions remain the same...
+  const exportUploadsToCSV = () => {
+    const csvData = historyItems.map(item => ({
+      'File Name': item.fileName,
+      'Upload Date': item.uploadDate,
+      'Upload Time': item.uploadTime,
+      'Disease': item.disease || 'Unknown',
+      'Total Records': item.recordCount,
+      'High Risk': item.highRiskCount,
+      'Medium Risk': item.mediumRiskCount,
+      'Low Risk': item.lowRiskCount
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(csvData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Upload History');
+    
+    XLSX.writeFile(wb, `upload_history_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
+  };
+
+  const exportUploadsToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(18);
+    doc.text('Upload History Report', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`Total Uploads: ${statistics.totalUploads}`, 14, 34);
+    doc.text(`Total Records Processed: ${statistics.totalRecords}`, 14, 40);
+    doc.text(`High Risk Cases: ${statistics.totalHighRisk}`, 14, 46);
+    
+    const tableData = historyItems.map(item => [
+      item.fileName,
+      item.uploadDate,
+      item.disease || 'Unknown',
+      item.recordCount,
+      item.highRiskCount,
+      item.mediumRiskCount,
+      item.lowRiskCount
+    ]);
+
+    autoTable(doc, {
+      head: [['File Name', 'Date', 'Disease', 'Records', 'High', 'Medium', 'Low']],
+      body: tableData,
+      startY: 52,
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 15 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 15 }
+      }
+    });
+
+    doc.save(`upload_history_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportRecordsToCSV = () => {
+    const csvData = historyItems.map(item => ({
+      'File Name': item.fileName,
+      'Upload Date': item.uploadDate,
+      'Disease': item.disease || 'Unknown',
+      'Total Records': item.recordCount
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(csvData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Records Summary');
+    
+    XLSX.writeFile(wb, `records_summary_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
+  };
+
+  const exportRecordsToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(18);
+    doc.text('Records Summary Report', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`Total Records Processed: ${statistics.totalRecords}`, 14, 34);
+    doc.text(`Across ${statistics.totalUploads} uploads`, 14, 40);
+    
+    const tableData = historyItems.map(item => [
+      item.fileName,
+      item.uploadDate,
+      item.disease || 'Unknown',
+      item.recordCount
+    ]);
+
+    autoTable(doc, {
+      head: [['File Name', 'Date', 'Disease', 'Total Records']],
+      body: tableData,
+      startY: 46,
+      theme: 'grid',
+      headStyles: { fillColor: [34, 197, 94] },
+      styles: { fontSize: 9, cellPadding: 3 }
+    });
+
+    doc.save(`records_summary_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const exportHighRiskToCSV = () => {
+    const csvData = historyItems
+      .filter(item => item.highRiskCount > 0)
+      .map(item => ({
+        'File Name': item.fileName,
+        'Upload Date': item.uploadDate,
+        'Disease': item.disease || 'Unknown',
+        'High Risk Count': item.highRiskCount,
+        'Percentage': `${((item.highRiskCount / item.recordCount) * 100).toFixed(1)}%`
+      }));
+
+    const ws = XLSX.utils.json_to_sheet(csvData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'High Risk Cases');
+    
+    XLSX.writeFile(wb, `high_risk_cases_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
+  };
+
+  const exportHighRiskToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(18);
+    doc.text('High Risk Cases Report', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`Total High Risk Cases: ${statistics.totalHighRisk}`, 14, 34);
+    doc.text(`Across ${statistics.totalUploads} uploads`, 14, 40);
+    
+    const tableData = historyItems
+      .filter(item => item.highRiskCount > 0)
+      .map(item => [
+        item.fileName,
+        item.uploadDate,
+        item.disease || 'Unknown',
+        item.highRiskCount,
+        `${((item.highRiskCount / item.recordCount) * 100).toFixed(1)}%`
+      ]);
+
+    autoTable(doc, {
+      head: [['File Name', 'Date', 'Disease', 'High Risk', 'Percentage']],
+      body: tableData,
+      startY: 46,
+      theme: 'grid',
+      headStyles: { fillColor: [239, 68, 68] },
+      styles: { fontSize: 9, cellPadding: 3 }
+    });
+
+    doc.save(`high_risk_cases_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
 
   const stats = [
     {
       label: 'Total Uploads',
-      value: '127',
+      value: statistics.totalUploads.toString(),
       icon: <FileSpreadsheet className="w-5 h-5" />,
       color: 'blue',
+      exportCSV: exportUploadsToCSV,
+      exportPDF: exportUploadsToPDF
     },
     {
       label: 'Total Records',
-      value: '8,456',
+      value: statistics.totalRecords.toLocaleString(),
       icon: <TrendingUp className="w-5 h-5" />,
       color: 'green',
-    },
-    {
-      label: 'Avg Accuracy',
-      value: '94.2%',
-      icon: <CheckCircle2 className="w-5 h-5" />,
-      color: 'purple',
+      exportCSV: exportRecordsToCSV,
+      exportPDF: exportRecordsToPDF
     },
     {
       label: 'High Risk Cases',
-      value: '892',
+      value: statistics.totalHighRisk.toLocaleString(),
       icon: <AlertCircle className="w-5 h-5" />,
       color: 'red',
+      exportCSV: exportHighRiskToCSV,
+      exportPDF: exportHighRiskToPDF
     },
   ];
 
@@ -100,18 +281,37 @@ export const HistoryPage: React.FC = () => {
           </p>
         </div>
 
-        {}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Statistics Cards with Export Menu */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {stats.map((stat, index) => (
-            <Card key={index}>
+            <Card key={index} className="relative">
               <CardContent className="p-6">
+                <div className="absolute top-4 right-4">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={stat.exportCSV} className="cursor-pointer">
+                        <Download className="w-4 h-4 mr-2" />
+                        Download CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={stat.exportPDF} className="cursor-pointer">
+                        <FileDown className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
                 <div className="flex items-center gap-3">
                   <div
                     className={`
                       p-3 rounded-lg
                       ${stat.color === 'blue' && 'bg-blue-50 text-blue-600'}
                       ${stat.color === 'green' && 'bg-green-50 text-green-600'}
-                      ${stat.color === 'purple' && 'bg-purple-50 text-purple-600'}
                       ${stat.color === 'red' && 'bg-red-50 text-red-600'}
                     `}
                   >
@@ -127,7 +327,31 @@ export const HistoryPage: React.FC = () => {
           ))}
         </div>
 
-        {}
+        {/* Filter */}
+        <div className="mb-6">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-gray-700">Filter by Disease:</label>
+                <select
+                  value={diseaseFilter}
+                  onChange={(e) => {
+                    setDiseaseFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">All Diseases</option>
+                  <option value="Diabetes">Diabetes</option>
+                  <option value="Pneumonia">Pneumonia</option>
+                  <option value="Unknown">Unknown</option>
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* History List */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Uploads</CardTitle>
@@ -136,61 +360,17 @@ export const HistoryPage: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {historyItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="border rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    {}
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="p-2 bg-blue-50 rounded-lg">
-                        <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {item.fileName}
-                        </h3>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {item.uploadDate} at {item.uploadTime}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {error}
+              </div>
+            )}
 
-                    {}
-                    <div className="flex gap-6 text-sm">
-                      <div>
-                        <p className="text-gray-600">Records</p>
-                        <p className="font-semibold text-gray-900">{item.recordCount}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600">High Risk</p>
-                        <p className="font-semibold text-red-600">{item.highRiskCount}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600">Accuracy</p>
-                        <p className="font-semibold text-green-600">{item.accuracy}%</p>
-                      </div>
-                    </div>
-
-                    {}
-                    <div className="flex items-center gap-3">
-                      <Badge variant="success" className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Completed
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {}
-            {historyItems.length === 0 && (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+              </div>
+            ) : historyItems.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <HistoryIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                 <p className="font-medium">No upload history yet</p>
@@ -198,6 +378,102 @@ export const HistoryPage: React.FC = () => {
                   Your uploaded files and predictions will appear here
                 </p>
               </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {historyItems.map((item) => (
+                    <div
+                      key={item._id}
+                      className="border rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div className="flex items-start gap-3 flex-1">
+                          <div className="p-2 bg-blue-50 rounded-lg">
+                            <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {item.fileName}
+                            </h3>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" />
+                                {item.uploadDate} at {item.uploadTime}
+                              </span>
+                              {item.disease && (
+                                <Badge variant="outline" className="text-xs">
+                                  {item.disease}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-6 text-sm">
+                          <div>
+                            <p className="text-gray-600">Records</p>
+                            <p className="font-semibold text-gray-900">{item.recordCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">High Risk</p>
+                            <p className="font-semibold text-red-600">{item.highRiskCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Medium Risk</p>
+                            <p className="font-semibold text-yellow-600">{item.mediumRiskCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600">Low Risk</p>
+                            <p className="font-semibold text-green-600">{item.lowRiskCount}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Badge variant="success" className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Completed
+                          </Badge>
+                          
+                          {canDelete && (
+                            <Button
+                              onClick={() => handleDelete(item._id, item.fileName)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <Button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-gray-600">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

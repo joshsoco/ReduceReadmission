@@ -122,51 +122,11 @@ export const getRecentEntries = async (req, res) => {
       });
     }
 
-    const mockEntries = [
-      {
-        id: 'ME-1234567890',
-        patientId: 'P-12345',
-        fullName: 'John Doe',
-        age: 68,
-        gender: 'Male',
-        admissionDate: '2024-01-15',
-        dischargeDate: '2024-01-20',
-        admissionType: 'Emergency',
-        primaryDiagnosis: 'Acute Myocardial Infarction',
-        prediction: {
-          riskLevel: 'High',
-          riskScore: 0.72,
-          recommendation: 'High risk of readmission. Recommend intensive follow-up care.',
-        },
-        enteredBy: 'dr.smith',
-        enteredByRole: 'doctor',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        id: 'ME-0987654321',
-        patientId: 'P-67890',
-        fullName: 'Jane Smith',
-        age: 45,
-        gender: 'Female',
-        admissionDate: '2024-01-18',
-        dischargeDate: '2024-01-22',
-        admissionType: 'Elective',
-        primaryDiagnosis: 'Appendectomy',
-        prediction: {
-          riskLevel: 'Low',
-          riskScore: 0.18,
-          recommendation: 'Low risk of readmission. Standard discharge procedures recommended.',
-        },
-        enteredBy: 'dr.jones',
-        enteredByRole: 'doctor',
-        createdAt: new Date(Date.now() - 172800000).toISOString(),
-      },
-    ];
-
     res.json({
       success: true,
-      entries: mockEntries,
-      total: mockEntries.length,
+      entries: [],
+      total: 0,
+      message: 'Manual entry history is stored locally in the browser',
     });
 
   } catch (error) {

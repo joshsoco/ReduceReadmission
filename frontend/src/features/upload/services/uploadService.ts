@@ -93,17 +93,25 @@ class UploadService {
 
       if (!mlResponse.ok) {
         const errorData = await mlResponse.json();
-        throw new Error(errorData.error || 'ML API prediction failed');
+        
+        if (mlResponse.status === 400) {
+          throw new Error(errorData.detail || 'Invalid file format or data');
+        }
+        
+        throw new Error(errorData.detail || 'ML API prediction failed');
       }
 
       const mlResult = await mlResponse.json();
+
+      if (!mlResult.disease || !mlResult.records) {
+        throw new Error('Invalid response from prediction service');
+      }
 
       // Transform ML API response to frontend format
       const predictions = mlResult.records.map((record: any, index: number) => {
         const riskLevel = record.Risk_Band;
         const probability = record.Predicted_Prob;
 
-        // Generate contributing factors based on risk level
         const factors = this.generateContributingFactors(record, riskLevel);
 
         return {
@@ -118,44 +126,27 @@ class UploadService {
         };
       });
 
-      // Also save to backend for history tracking
-      try {
-        await fetch(`${API_BASE_URL}/upload/excel`, {
-          method: 'POST',
-          headers: this.getAuthHeaders(),
-          body: JSON.stringify({
-            fileName: excelData.file.name,
-            fileSize: excelData.file.size,
-            headers: excelData.headers,
-            data: excelData.data,
-            rowCount: excelData.rowCount,
-            predictions: predictions,
-            mlModelInfo: {
-              disease: mlResult.disease,
-              timestamp: new Date().toISOString(),
-            },
-          }),
-        });
-      } catch (backendError) {
-        console.warn('Failed to save to backend:', backendError);
-      }
-
       return {
         success: true,
-        message: `Predictions generated successfully for ${mlResult.disease}`,
+        message: `Successfully analyzed ${predictions.length} patient records for ${mlResult.disease} readmission risk`,
         data: {
           fileName: excelData.file.name,
           rowCount: excelData.rowCount || 0,
           predictions: predictions,
           disease: mlResult.disease,
+          fileSize: excelData.file.size
         },
       };
     } catch (error) {
       console.error('Upload error:', error);
+      const errorMessage = (error as Error).message;
+      
       return {
         success: false,
         message: 'Failed to generate predictions',
-        error: (error as Error).message,
+        error: errorMessage.includes('non-medical') || errorMessage.includes('not appear to contain')
+          ? errorMessage
+          : 'Failed to process file. Please ensure it contains valid hospital readmission patient data.',
       };
     }
   }

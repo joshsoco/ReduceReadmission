@@ -20,13 +20,26 @@ export class FileModel {
   private static readonly ACCEPTED_TYPES = [
     'application/vnd.ms-excel',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/csv', // Added CSV support
+    'text/csv',
     'application/csv',
   ];
 
-  private static readonly ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.csv']; // Added .csv
-
+  private static readonly ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.csv'];
   private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+  // Required medical columns for validation
+  private static readonly REQUIRED_MEDICAL_KEYWORDS = [
+    'patient', 'age', 'admission', 'diagnosis', 'medical', 'hospital',
+    'los', 'length_of_stay', 'readmission', 'visit', 'discharge'
+  ];
+
+  // Keywords that indicate non-medical data
+  private static readonly NON_MEDICAL_KEYWORDS = [
+    'product', 'price', 'quantity', 'sales', 'customer', 'order',
+    'invoice', 'item', 'category', 'sku', 'discount', 'payment',
+    'store', 'cashier', 'total', 'subtotal', 'tax', 'supplier',
+    'inventory', 'warehouse', 'shipping', 'delivery'
+  ];
 
   static validateFile(file: File): FileValidationResult {
     if (!file) {
@@ -44,7 +57,7 @@ export class FileModel {
     if (!hasValidExtension) {
       return {
         isValid: false,
-        error: 'Invalid file type. Please upload an Excel or CSV file (.xls, .xlsx, or .csv)', // Updated error message
+        error: 'Invalid file type. Please upload an Excel or CSV file (.xls, .xlsx, or .csv)',
       };
     }
 
@@ -56,7 +69,7 @@ export class FileModel {
     if (!hasValidType && file.type !== '') {
       return {
         isValid: false,
-        error: 'Invalid file type. Please upload an Excel file',
+        error: 'Invalid file type. Please upload an Excel or CSV file',
       };
     }
 
@@ -89,12 +102,10 @@ export class FileModel {
 
   static formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 Bytes';
-
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   }
 
   static validateExcelStructure(
@@ -105,6 +116,33 @@ export class FileModel {
       return {
         isValid: false,
         error: 'Excel file has no headers',
+      };
+    }
+
+    // Convert headers to lowercase for case-insensitive comparison
+    const lowerHeaders = headers.map(h => h.toLowerCase().trim());
+
+    // Check for non-medical keywords
+    const hasNonMedical = lowerHeaders.some(header =>
+      this.NON_MEDICAL_KEYWORDS.some(keyword => header.includes(keyword))
+    );
+
+    if (hasNonMedical) {
+      return {
+        isValid: false,
+        error: 'This file appears to contain non-medical data (e.g., retail/sales data). Please upload hospital readmission patient data with columns like: patient_id, age, admission_date, diagnosis, etc.',
+      };
+    }
+
+    // Check for at least one medical keyword
+    const hasMedicalKeyword = lowerHeaders.some(header =>
+      this.REQUIRED_MEDICAL_KEYWORDS.some(keyword => header.includes(keyword))
+    );
+
+    if (!hasMedicalKeyword && headers.length > 3) {
+      return {
+        isValid: false,
+        error: 'This file does not appear to contain hospital readmission data. Please upload a file with patient medical information including columns like: patient_id, age, admission_date, diagnosis, length_of_stay, etc.',
       };
     }
 

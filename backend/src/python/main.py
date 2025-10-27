@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Query
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 import pandas as pd
 import joblib, io
@@ -8,41 +8,174 @@ from matplotlib.backends.backend_pdf import PdfPages
 import shap
 from datetime import datetime
 import matplotlib
-matplotlib.use("Agg")  # Use non-interactive backend for PDF generation
+matplotlib.use("Agg")
 
 app = FastAPI(title="Readmission Risk API")
 
-# ---------------------------
 # Load models once at startup
-# ---------------------------
 diabetes_model = joblib.load("model_Diabetes_XGBoost_long.pkl")
 pneumonia_model = joblib.load("model_Pneumonia_XGBoost_long.pkl")
 
 # ---------------------------
-# Schema validation
+# Schema validation with strict checking
 # ---------------------------
-def validate_schema(df: pd.DataFrame) -> str:
+def validate_schema(df: pd.DataFrame) -> tuple[str, bool, str]:
+    """
+    Validate if the uploaded file contains hospital readmission data.
+    Returns: (disease_type, is_valid, error_message)
+    """
+    df_cols = set(c.lower().strip() for c in df.columns)
+    
+    # Required columns for Diabetes readmission
     diabetes_cols = {
-        'age','cci','prior_adm','los','dispo','insurance','hematocrit','albumin',
-        'anemia','insulin_use','socioecon','visits_so_far','days_since_last',
-        'avg_albumin_so_far','avg_los_so_far','delta_albumin'
+        'age', 'cci', 'prior_adm', 'los', 'dispo', 'insurance', 'hematocrit', 
+        'albumin', 'anemia', 'insulin_use', 'socioecon', 'visits_so_far', 
+        'days_since_last', 'avg_albumin_so_far', 'avg_los_so_far', 'delta_albumin'
     }
+    
+    # Required columns for Pneumonia readmission
     pneumonia_cols = {
-        'age','comorb','clin_instab','adm_type','hac','gender','followup','edu_support',
-        'los','avg_los_so_far','visits_so_far','days_since_last','instab_rate_so_far'
+        'age', 'comorb', 'clin_instab', 'adm_type', 'hac', 'gender', 'followup', 
+        'edu_support', 'los', 'avg_los_so_far', 'visits_so_far', 
+        'days_since_last', 'instab_rate_so_far'
     }
-    df_cols = set(c.lower() for c in df.columns)
-    if diabetes_cols.issubset(df_cols): return "Diabetes"
-    if pneumonia_cols.issubset(df_cols): return "Pneumonia"
-    return "Unknown"
+    
+    # Check if file contains medical/hospital-related indicators
+    medical_keywords = {
+        'patient', 'admission', 'discharge', 'diagnosis', 'medical', 'hospital',
+        'age', 'los', 'length_of_stay', 'readmission', 'visit', 'clinical'
+    }
+    
+    has_medical_context = any(
+        keyword in col for col in df_cols for keyword in medical_keywords
+    )
+    
+    # Check for non-medical data (supermarket, retail, etc.)
+    non_medical_keywords = {
+        'product', 'price', 'quantity', 'sales', 'customer', 'order', 
+        'invoice', 'item', 'category', 'sku', 'discount', 'payment',
+        'store', 'cashier', 'total', 'subtotal', 'tax'
+    }
+    
+    has_non_medical = any(
+        keyword in col for col in df_cols for keyword in non_medical_keywords
+    )
+    
+    if has_non_medical:
+        return "Unknown", False, "This file appears to contain non-medical data (e.g., retail/sales data). Please upload hospital readmission patient data."
+    
+    if not has_medical_context and len(df_cols) > 5:
+        return "Unknown", False, "This file does not appear to contain hospital readmission data. Please upload a file with patient medical records."
+    
+    # Check for specific disease schemas
+    if diabetes_cols.issubset(df_cols):
+        return "Diabetes", True, ""
+    
+    if pneumonia_cols.issubset(df_cols):
+        return "Pneumonia", True, ""
+    
+    # Check for partial match (at least 50% of required columns)
+    diabetes_match = len(diabetes_cols & df_cols) / len(diabetes_cols)
+    pneumonia_match = len(pneumonia_cols & df_cols) / len(pneumonia_cols)
+    
+    if diabetes_match >= 0.5:
+        missing_cols = diabetes_cols - df_cols
+        return "Unknown", False, f"File partially matches Diabetes schema but missing required columns: {', '.join(sorted(missing_cols))}"
+    
+    if pneumonia_match >= 0.5:
+        missing_cols = pneumonia_cols - df_cols
+        return "Unknown", False, f"File partially matches Pneumonia schema but missing required columns: {', '.join(sorted(missing_cols))}"
+    
+    return "Unknown", False, "File schema not recognized. Please upload a file with either Diabetes or Pneumonia readmission patient data with the required columns."
+
+def risk_band(p):
+    if p < 0.33:
+        return "Low"
+    elif p < 0.66:
+        return "Medium"
+    else:
+        return "High"
 
 # ---------------------------
-# Risk band helper
+# Upload endpoint with validation
 # ---------------------------
-def risk_band(p):
-    if p < 0.33: return "Low"
-    elif p < 0.66: return "Medium"
-    return "High"
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...), format: str = Query("json")):
+    try:
+        # Read file
+        contents = await file.read()
+        
+        try:
+            if file.filename.endswith(".csv"):
+                df = pd.read_csv(io.BytesIO(contents))
+            else:
+                df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error reading file: {str(e)}. Please ensure the file is a valid CSV or Excel file."
+            )
+        
+        # Validate empty file
+        if df.empty or len(df) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="The uploaded file is empty. Please upload a file with patient data."
+            )
+        
+        # Validate schema
+        disease, is_valid, error_message = validate_schema(df)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=error_message
+            )
+        
+        # Select model
+        model = diabetes_model if disease == "Diabetes" else pneumonia_model
+        
+        # Predict
+        try:
+            probs = model.predict_proba(df)[:, 1]
+            preds = model.predict(df)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error generating predictions. The data may not match the expected format: {str(e)}"
+            )
+        
+        df["Predicted_Prob"] = probs.round(3)
+        df["Predicted_Class"] = preds
+        df["Risk_Band"] = [risk_band(p) for p in probs]
+        
+        # JSON output
+        if format == "json":
+            return {
+                "disease": disease,
+                "records": df.to_dict(orient="records"),
+                "total_records": len(df),
+                "high_risk_count": len([r for r in df["Risk_Band"] if r == "High"]),
+                "medium_risk_count": len([r for r in df["Risk_Band"] if r == "Medium"]),
+                "low_risk_count": len([r for r in df["Risk_Band"] if r == "Low"])
+            }
+        
+        # PDF output
+        elif format == "pdf":
+            buf = generate_pdf_report(df, disease, model)
+            return StreamingResponse(
+                buf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename={disease}_report.pdf"}
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
 
 # ---------------------------
 # PDF helpers
@@ -73,44 +206,7 @@ def add_summary_table(pdf, df, disease):
     ax.set_title(f"{disease} – Risk Band Summary", fontsize=14, weight="bold", pad=20)
     pdf.savefig(fig, bbox_inches="tight"); plt.close(fig)
 
-# ---------------------------
-# Upload endpoint
-# ---------------------------
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...), format: str = Query("json")):
-    # Read file
-    contents = await file.read()
-    if file.filename.endswith(".csv"):
-        df = pd.read_csv(io.BytesIO(contents))
-    else:
-        df = pd.read_excel(io.BytesIO(contents))
-
-    # Detect schema
-    disease = validate_schema(df)
-    if disease == "Unknown":
-        return JSONResponse({"error": "File schema not recognized"}, status_code=400)
-
-    model = diabetes_model if disease == "Diabetes" else pneumonia_model
-
-    # Predict
-    probs = model.predict_proba(df)[:,1]
-    preds = model.predict(df)
-    df["Predicted_Prob"] = probs.round(3)
-    df["Predicted_Class"] = preds
-    df["Risk_Band"] = [risk_band(p) for p in probs]
-
-    # JSON output
-    if format == "json":
-        return {"disease": disease, "records": df.to_dict(orient="records")}
-
-    # PDF output
-    elif format == "pdf":
-        buf = generate_pdf_report(df, disease, model)
-        return StreamingResponse(buf, media_type="application/pdf",
-                                headers={"Content-Disposition": f"attachment; filename={disease}_report.pdf"})
-
-
-    # --- Helper: Cover Page ---
+# --- Helper: Cover Page ---
 def add_cover_page(pdf, df, disease):
     today = datetime.today().strftime("%Y-%m-%d")
     plt.figure(figsize=(8.5, 11))

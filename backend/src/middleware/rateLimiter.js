@@ -71,9 +71,7 @@ export const authLimiter = createRateLimiter({
 });
 
 export const apiLimiter = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 60,
-  message: 'API rate limit exceeded, please slow down.'
+   skip: () => true
 });
 
 export const strictLimiter = createRateLimiter({

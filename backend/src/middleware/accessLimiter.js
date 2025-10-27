@@ -4,45 +4,46 @@ import Admin from '../models/Admin.js';
 export const verifyToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
-        message: 'Access denied. No token provided or invalid format.'
+        message: 'No token provided'
       });
     }
 
     const token = authHeader.substring(7);
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Access denied. Token not found.'
-      });
-    }
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    
+    console.log('Token decoded:', decoded);
+    
+    // Attach user info to request with proper id field
+    req.user = {
+      id: decoded.id || decoded._id || decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
+      name: decoded.name,
+      userType: decoded.userType
+    };
+
+    console.log('User attached to request:', req.user);
 
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        message: 'Token has expired.'
-      });
-    } else if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token.'
-      });
-    } else {
-      console.error('Token verification error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Server error during authentication.'
+        message: 'Token expired'
       });
     }
+    
+    console.error('Token verification error:', error);
+    
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
   }
 };
 

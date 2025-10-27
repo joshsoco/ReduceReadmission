@@ -1,24 +1,99 @@
 import React, { useState } from 'react';
-import { Sparkles, CheckCircle2, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { Sparkles, CheckCircle2, FileSpreadsheet } from 'lucide-react';
 import { authService } from '@/features/auth/services/authService';
 import { Navbar } from '@/components/Navbar';
 import { UploadForm } from '@/features/upload/components/UploadForm';
 import { ResultsTable, PredictionResult } from '@/features/upload/components/ResultsTable';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export const DashboardPage: React.FC = () => {
   const user = authService.getUser();
   const [results, setResults] = useState<PredictionResult[]>([]);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [disease, setDisease] = useState<string>('');
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
 
-  const handleUploadSuccess = (data: any, fileName: string) => {
+  const handleUploadSuccess = async (data: any, fileName: string, fileSize?: number) => {
+    console.log('=== Upload Success Handler ===');
+    console.log('Data received:', data);
+    console.log('File name:', fileName);
+    console.log('File size:', fileSize);
+    
     if (data.predictions && Array.isArray(data.predictions)) {
       setResults(data.predictions);
       setUploadedFileName(fileName);
       setDisease(data.disease || '');
+
+      await saveToHistory({
+        fileName,
+        fileSize: fileSize || 0,
+        predictions: data.predictions,
+        disease: data.disease,
+      });
+    }
+  };
+
+  const saveToHistory = async (uploadData: { 
+    fileName: string; 
+    fileSize: number;
+    predictions: any[]; 
+    disease?: string;
+  }) => {
+    // Prevent duplicate saves
+    if (isSavingHistory) {
+      console.log('Already saving history, skipping duplicate call');
+      return;
+    }
+
+    setIsSavingHistory(true);
+
+    try {
+      const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+      
+      if (!token) {
+        console.error('No authentication token found');
+        return;
+      }
+
+      const historyPayload = {
+        fileName: uploadData.fileName,
+        fileSize: uploadData.fileSize,
+        recordCount: uploadData.predictions.length,
+        highRiskCount: uploadData.predictions.filter(p => p.risk === 'High').length,
+        mediumRiskCount: uploadData.predictions.filter(p => p.risk === 'Medium').length,
+        lowRiskCount: uploadData.predictions.filter(p => p.risk === 'Low').length,
+        disease: uploadData.disease || 'Unknown',
+        predictions: uploadData.predictions
+      };
+
+      console.log('=== Saving to History ===');
+      console.log('Payload:', historyPayload);
+
+      const response = await fetch(`${API_BASE_URL}/history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(historyPayload)
+      });
+
+      const responseData = await response.json();
+      
+      console.log('History save response:', responseData);
+
+      if (!response.ok) {
+        console.error('Failed to save history:', responseData);
+      } else {
+        console.log('✅ History saved successfully with ID:', responseData.data?.id);
+      }
+    } catch (error) {
+      console.error('Error saving upload history:', error);
+    } finally {
+      setIsSavingHistory(false);
     }
   };
 
