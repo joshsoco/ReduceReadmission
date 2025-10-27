@@ -20,8 +20,8 @@ PORT=5000
 NODE_ENV=development
 
 # MongoDB
-MONGO_URI=mongodb://localhost:27017/tanga
-# Or Atlas: mongodb+srv://username:password@cluster.mongodb.net/tanga
+MONGO_URI=mongodb://localhost:27017/hospital-readmissions
+# Or Atlas: mongodb+srv://username:password@cluster.mongodb.net/hospital-readmissions
 
 # JWT
 JWT_SECRET=your_super_secret_jwt_key_here_256_bit_minimum
@@ -52,10 +52,9 @@ Runs on `http://localhost:5000`
 ```bash
 cd backend/src/python
 
-# Create virtual environment
+# Create virtual environment (Optional)
 python -m venv venv
-# kahit di mo iactive to paginstall:>
-# Activate
+
 # Windows:
 venv\Scripts\activate
 # Mac/Linux:
