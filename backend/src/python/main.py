@@ -8,17 +8,30 @@ from matplotlib.backends.backend_pdf import PdfPages
 import shap
 from datetime import datetime
 import matplotlib
+from pathlib import Path
+import joblib
 matplotlib.use("Agg")
 
 app = FastAPI(title="Readmission Risk API")
 
-# Load models once at startup
-diabetes_model = joblib.load("model_Diabetes_XGBoost_long.pkl")
-pneumonia_model = joblib.load("model_Pneumonia_XGBoost_long.pkl")
+# Model loading
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "models"
 
-# ---------------------------
+diabetes_model_path = MODEL_DIR / "model_Diabetes_XGBoost_long.pkl"
+pneumonia_model_path = MODEL_DIR / "model_Pneumonia_XGBoost_long.pkl"
+
+# Check files exist before loading
+if not diabetes_model_path.exists():
+    raise FileNotFoundError(f"❌ Missing model file: {diabetes_model_path}")
+if not pneumonia_model_path.exists():
+    raise FileNotFoundError(f"❌ Missing model file: {pneumonia_model_path}")
+
+# Load models
+diabetes_model = joblib.load(diabetes_model_path)
+pneumonia_model = joblib.load(pneumonia_model_path)
+
 # Schema validation with strict checking
-# ---------------------------
 def validate_schema(df: pd.DataFrame) -> tuple[str, bool, str]:
     """
     Validate if the uploaded file contains hospital readmission data.
@@ -26,14 +39,14 @@ def validate_schema(df: pd.DataFrame) -> tuple[str, bool, str]:
     """
     df_cols = set(c.lower().strip() for c in df.columns)
     
-    # Required columns for Diabetes readmission
+    # Required columns for diabetes readmission
     diabetes_cols = {
         'age', 'cci', 'prior_adm', 'los', 'dispo', 'insurance', 'hematocrit', 
         'albumin', 'anemia', 'insulin_use', 'socioecon', 'visits_so_far', 
         'days_since_last', 'avg_albumin_so_far', 'avg_los_so_far', 'delta_albumin'
     }
     
-    # Required columns for Pneumonia readmission
+    # Required columns for pneumonia readmission
     pneumonia_cols = {
         'age', 'comorb', 'clin_instab', 'adm_type', 'hac', 'gender', 'followup', 
         'edu_support', 'los', 'avg_los_so_far', 'visits_so_far', 
@@ -50,7 +63,7 @@ def validate_schema(df: pd.DataFrame) -> tuple[str, bool, str]:
         keyword in col for col in df_cols for keyword in medical_keywords
     )
     
-    # Check for non-medical data (supermarket, retail, etc.)
+    # Check for non-medical data 
     non_medical_keywords = {
         'product', 'price', 'quantity', 'sales', 'customer', 'order', 
         'invoice', 'item', 'category', 'sku', 'discount', 'payment',
@@ -96,9 +109,7 @@ def risk_band(p):
     else:
         return "High"
 
-# ---------------------------
 # Upload endpoint with validation
-# ---------------------------
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), format: str = Query("json")):
     try:
@@ -177,9 +188,7 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-# ---------------------------
 # PDF helpers
-# ---------------------------
 def add_cover_page(pdf, df, disease):
     patient_name = df.get("patient_name", ["Unknown"]).iloc[0]
     patient_id = df.get("patient_id", ["Unknown"]).iloc[0]
@@ -206,7 +215,7 @@ def add_summary_table(pdf, df, disease):
     ax.set_title(f"{disease} – Risk Band Summary", fontsize=14, weight="bold", pad=20)
     pdf.savefig(fig, bbox_inches="tight"); plt.close(fig)
 
-# --- Helper: Cover Page ---
+# Helper: Cover Page
 def add_cover_page(pdf, df, disease):
     today = datetime.today().strftime("%Y-%m-%d")
     plt.figure(figsize=(8.5, 11))
@@ -254,7 +263,7 @@ def add_patient_metadata(pdf, df):
     plt.close(fig)
 
 
-# --- Helper: Key Findings ---
+# Helper: Key Findings
 def add_key_findings(pdf, df, disease):
     total = len(df)
     high_pct = round((df["Risk_Band"].eq("High").mean() * 100), 1)
@@ -270,7 +279,7 @@ def add_key_findings(pdf, df, disease):
     plt.text(0.1, 0.60, f"Most Recent Visit Risk: {last_risk}", fontsize=14)
     pdf.savefig(); plt.close()
 
-# --- Helper: Summary Table ---
+# Helper: Summary Table
 def add_summary_table(pdf, df):
     counts = df["Risk_Band"].value_counts().reindex(["Low","Medium","High"], fill_value=0)
     fig, ax = plt.subplots(figsize=(6,3))
@@ -290,7 +299,7 @@ def add_summary_table(pdf, df):
     ax.set_title("Risk Band Summary", fontsize=14, weight="bold", pad=20)
     pdf.savefig(fig, bbox_inches="tight"); plt.close(fig)
 
-# --- Helper: Risk Trajectory ---
+# Helper: Risk Trajectory
 def add_risk_trajectory(pdf, df):
     plt.figure(figsize=(8,4))
     sns.lineplot(x=range(len(df)), y=df["Predicted_Prob"], marker="o", color="#2196F3")
@@ -299,7 +308,7 @@ def add_risk_trajectory(pdf, df):
     plt.grid(True)
     pdf.savefig(); plt.close()
 
-# --- Helper: Risk Distribution ---
+# Helper: Risk Distribution
 def add_risk_distribution(pdf, df):
     risk_colors = {"Low":"#4CAF50","Medium":"#FFC107","High":"#F44336"}
     plt.figure(figsize=(6,4))
@@ -309,12 +318,11 @@ def add_risk_distribution(pdf, df):
     plt.grid(True)
     pdf.savefig(); plt.close()
 
-# --- Helper: SHAP Summary (optional) ---
+# Helper: SHAP Summary (Optional)
 def add_shap_summary(pdf, df, model):
     try:
         X = df.drop(columns=["Predicted_Prob","Predicted_Class","Risk_Band",
                              "patient_name","patient_id","room_id"], errors="ignore")
-        # Clean numeric
         for col in X.columns:
             X[col] = (X[col].astype(str)
                       .str.replace("[","",regex=False)
@@ -333,7 +341,7 @@ def add_shap_summary(pdf, df, model):
                  ha="center", va="center", fontsize=14, color="red")
         pdf.savefig(); plt.close()
 
-# --- Main PDF Generator ---
+# Main PDF Generator
 def generate_pdf_report(df, disease, model):
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
