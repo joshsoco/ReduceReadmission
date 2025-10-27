@@ -65,6 +65,10 @@ pip install -r requirements.txt
 
 # Start FastAPI
 uvicorn main:app --reload --port 8000
+
+# Try this if first option doesn't work
+uvicorn app:app --reload --port 8000
+
 ```
 Runs on `http://localhost:8000`
 
