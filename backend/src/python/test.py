@@ -100,6 +100,18 @@ def compute_contributions(model, X, feature_names):
             proxy.append((f, val, score))
         return pd.DataFrame(proxy, columns=["Feature", "Value", "Contribution"]).sort_values(by="Contribution", key=np.abs, ascending=False)
 
+def detect_disease_from_columns(df: pd.DataFrame) -> str:
+    """Infer disease name based on columns present in the uploaded data."""
+    cols = [c.lower() for c in df.columns]
+
+    if any(c in cols for c in ["glucose", "hba1c", "insulin"]):
+        return "Diabetes"
+    elif any(c in cols for c in ["wbc_count", "oxygen_saturation", "temperature"]):
+        return "Pneumonia"
+    elif any(c in cols for c in ["creatinine", "bun", "gfr", "albumin"]):
+        return "Chronic Kidney Disease"
+    else:
+        return "Unknown"
 
 # -----------------------------------------------------
 # Report generation (Excel / PDF / JSON)
