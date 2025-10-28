@@ -1,119 +1,246 @@
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import pandas as pd
-import joblib, io
+import joblib
+import io
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_pdf import PdfPages
-import shap
 from datetime import datetime
 import matplotlib
 from pathlib import Path
-import joblib
+import os
+import re
+
 matplotlib.use("Agg")
 
 app = FastAPI(title="Readmission Risk API")
 
-# Model loading
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "models"
 
-diabetes_model_path = MODEL_DIR / "model_Diabetes_XGBoost_long.pkl"
-pneumonia_model_path = MODEL_DIR / "model_Pneumonia_XGBoost_long.pkl"
+# Disease Registry with model file patterns and thresholds
+DISEASE_REGISTRY = {
+    "Type 2 Diabetes": {
+        "model_file": "Type_2_Diabetes.pkl",
+        "cols_file": "Type_2_Diabetes_cols.pkl",
+        "categories_file": "Type_2_Diabetes_categories.pkl",
+        "threshold": 0.45,
+        "aliases": ["diabetes", "type2diabetes", "type_2_diabetes"]
+    },
+    "Pneumonia": {
+        "model_file": "Pneumonia.pkl",
+        "cols_file": "Pneumonia_cols.pkl",
+        "categories_file": "Pneumonia_categories.pkl",
+        "threshold": 0.50,
+        "aliases": ["pneumonia"]
+    },
+    "Chronic Kidney Disease": {
+        "model_file": "Chronic_Kidney_Disease.pkl",
+        "cols_file": "Chronic_Kidney_Disease_cols.pkl",
+        "categories_file": "Chronic_Kidney_Disease_categories.pkl",
+        "threshold": 0.48,
+        "aliases": ["ckd", "chronic_kidney_disease", "kidney"]
+    },
+    "COPD": {
+        "model_file": "COPD.pkl",
+        "cols_file": "COPD_cols.pkl",
+        "categories_file": "COPD_categories.pkl",
+        "threshold": 0.50,
+        "aliases": ["copd", "chronic_obstructive"]
+    },
+    "Hypertension": {
+        "model_file": "Hypertension.pkl",
+        "cols_file": "Hypertension_cols.pkl",
+        "categories_file": "Hypertension_categories.pkl",
+        "threshold": 0.50,
+        "aliases": ["hypertension", "high_blood_pressure"]
+    }
+}
 
-# Check files exist before loading
-if not diabetes_model_path.exists():
-    raise FileNotFoundError(f"❌ Missing model file: {diabetes_model_path}")
-if not pneumonia_model_path.exists():
-    raise FileNotFoundError(f"❌ Missing model file: {pneumonia_model_path}")
+# Load all available models with metadata
+LOADED_MODELS = {}
 
-# Load models
-diabetes_model = joblib.load(diabetes_model_path)
-pneumonia_model = joblib.load(pneumonia_model_path)
+for disease, config in DISEASE_REGISTRY.items():
+    model_path = MODEL_DIR / config["model_file"]
+    cols_path = MODEL_DIR / config["cols_file"]
+    categories_path = MODEL_DIR / config["categories_file"]
+    
+    if model_path.exists() and cols_path.exists() and categories_path.exists():
+        try:
+            model = joblib.load(model_path)
+            train_cols = joblib.load(cols_path)
+            cat_levels = joblib.load(categories_path)
+            
+            LOADED_MODELS[disease] = {
+                "model": model,
+                "train_cols": train_cols,
+                "cat_levels": cat_levels,
+                "threshold": config["threshold"]
+            }
+            print(f"Loaded {disease} model")
+        except Exception as e:
+            print(f"Failed to load {disease} model: {e}")
+    else:
+        missing = []
+        if not model_path.exists(): missing.append("model")
+        if not cols_path.exists(): missing.append("columns")
+        if not categories_path.exists(): missing.append("categories")
+        print(f"{disease}: Missing {', '.join(missing)} file(s)")
 
-# Schema validation with strict checking
-def validate_schema(df: pd.DataFrame) -> tuple[str, bool, str]:
+if not LOADED_MODELS:
+    raise FileNotFoundError("No models loaded! Check models directory.")
+
+print(f"Successfully loaded {len(LOADED_MODELS)} models: {list(LOADED_MODELS.keys())}")
+
+# Root endpoint for health checks
+@app.get("/")
+async def root():
+    """Root endpoint for health checks"""
+    return {
+        "status": "healthy",
+        "message": "ML API is running",
+        "available_diseases": list(LOADED_MODELS.keys()),
+        "total_models": len(LOADED_MODELS)
+    }
+
+# Helper function to prepare data
+def prepare_X(df: pd.DataFrame, train_cols: list, cat_levels: dict) -> pd.DataFrame:
+    """Prepare input data for prediction"""
+    X = df.copy()
+    
+    # Remove outcome columns if present
+    outcome_cols = [c for c in ["outcome_readmitted_30d", "disease", "readmitted"] if c in X.columns]
+    if outcome_cols:
+        X = X.drop(columns=outcome_cols, errors='ignore')
+    
+    # Add missing columns with zeros
+    for c in train_cols:
+        if c not in X.columns:
+            X[c] = 0
+    
+    # Reorder columns to match training
+    X = X[train_cols]
+    
+    # Handle categorical variables
+    for col, cats in cat_levels.items():
+        if col in X.columns:
+            X[col] = pd.Categorical(X[col], categories=cats)
+    
+    return X
+
+# Schema validation with disease detection
+def validate_schema(df: pd.DataFrame, filename: str = "") -> tuple[str, bool, str]:
     """
     Validate if the uploaded file contains hospital readmission data.
     Returns: (disease_type, is_valid, error_message)
     """
-    df_cols = set(c.lower().strip() for c in df.columns)
+    df_cols = set(c.lower().strip().replace(" ", "_") for c in df.columns)
     
-    # Required columns for diabetes readmission
-    diabetes_cols = {
-        'age', 'cci', 'prior_adm', 'los', 'dispo', 'insurance', 'hematocrit', 
-        'albumin', 'anemia', 'insulin_use', 'socioecon', 'visits_so_far', 
-        'days_since_last', 'avg_albumin_so_far', 'avg_los_so_far', 'delta_albumin'
+    # Disease-specific column patterns
+    disease_indicators = {
+        "Type 2 Diabetes": {
+            'required': {'age', 'cci', 'los'},
+            'indicators': {'glucose', 'hba1c', 'insulin', 'diabetes', 'albumin', 'hematocrit'}
+        },
+        "Pneumonia": {
+            'required': {'age', 'los'},
+            'indicators': {'pneumonia', 'oxygen', 'wbc', 'temperature', 'comorb', 'followup'}
+        },
+        "Chronic Kidney Disease": {
+            'required': {'age', 'creatinine'},
+            'indicators': {'kidney', 'ckd', 'gfr', 'bun', 'albumin', 'dialysis'}
+        },
+        "COPD": {
+            'required': {'age'},
+            'indicators': {'copd', 'fev', 'smoking', 'oxygen', 'respiratory', 'exacerbation'}
+        },
+        "Hypertension": {
+            'required': {'age'},
+            'indicators': {'hypertension', 'systolic', 'diastolic', 'bp', 'blood_pressure'}
+        }
     }
     
-    # Required columns for pneumonia readmission
-    pneumonia_cols = {
-        'age', 'comorb', 'clin_instab', 'adm_type', 'hac', 'gender', 'followup', 
-        'edu_support', 'los', 'avg_los_so_far', 'visits_so_far', 
-        'days_since_last', 'instab_rate_so_far'
-    }
-    
-    # Check if file contains medical/hospital-related indicators
-    medical_keywords = {
-        'patient', 'admission', 'discharge', 'diagnosis', 'medical', 'hospital',
-        'age', 'los', 'length_of_stay', 'readmission', 'visit', 'clinical'
-    }
-    
-    has_medical_context = any(
-        keyword in col for col in df_cols for keyword in medical_keywords
-    )
-    
-    # Check for non-medical data 
-    non_medical_keywords = {
-        'product', 'price', 'quantity', 'sales', 'customer', 'order', 
-        'invoice', 'item', 'category', 'sku', 'discount', 'payment',
-        'store', 'cashier', 'total', 'subtotal', 'tax'
-    }
+    # Check for non-medical data
+    non_medical_keywords = [
+        'product', 'price', 'quantity', 'sales', 'customer', 'order',
+        'invoice', 'item', 'category', 'sku', 'discount'
+    ]
     
     has_non_medical = any(
-        keyword in col for col in df_cols for keyword in non_medical_keywords
+        any(keyword in col for keyword in non_medical_keywords)
+        for col in df_cols
     )
     
     if has_non_medical:
-        return "Unknown", False, "This file appears to contain non-medical data (e.g., retail/sales data). Please upload hospital readmission patient data."
+        return "Unknown", False, "This file appears to contain non-medical data. Please upload hospital readmission patient data."
+    
+    # Check medical context
+    medical_keywords = [
+        'patient', 'age', 'admission', 'diagnosis', 'medical', 'hospital',
+        'los', 'length_of_stay', 'readmission', 'visit', 'discharge'
+    ]
+    
+    has_medical_context = any(
+        any(keyword in col for keyword in medical_keywords)
+        for col in df_cols
+    )
     
     if not has_medical_context and len(df_cols) > 5:
-        return "Unknown", False, "This file does not appear to contain hospital readmission data. Please upload a file with patient medical records."
+        return "Unknown", False, "This file does not appear to contain hospital readmission data."
     
-    # Check for specific disease schemas
-    if diabetes_cols.issubset(df_cols):
-        return "Diabetes", True, ""
+    # Check filename first for disease hints
+    filename_lower = filename.lower().replace(" ", "_")
+    for disease, config in DISEASE_REGISTRY.items():
+        for alias in config["aliases"]:
+            if alias in filename_lower:
+                if disease in LOADED_MODELS:
+                    print(f"Disease detected from filename: {disease}")
+                    return disease, True, ""
     
-    if pneumonia_cols.issubset(df_cols):
-        return "Pneumonia", True, ""
+    # Score each disease based on column matches
+    best_match = None
+    best_score = 0
     
-    # Check for partial match (at least 50% of required columns)
-    diabetes_match = len(diabetes_cols & df_cols) / len(diabetes_cols)
-    pneumonia_match = len(pneumonia_cols & df_cols) / len(pneumonia_cols)
+    for disease, patterns in disease_indicators.items():
+        if disease not in LOADED_MODELS:
+            continue
+        
+        required_match = len(patterns['required'] & df_cols) / len(patterns['required'])
+        indicator_match = len(patterns['indicators'] & df_cols) / max(len(patterns['indicators']), 1)
+        
+        score = (required_match * 0.6) + (indicator_match * 0.4)
+        
+        if score > best_score:
+            best_score = score
+            best_match = disease
     
-    if diabetes_match >= 0.5:
-        missing_cols = diabetes_cols - df_cols
-        return "Unknown", False, f"File partially matches Diabetes schema but missing required columns: {', '.join(sorted(missing_cols))}"
+    if best_match and best_score >= 0.4:
+        print(f"Disease detected from columns: {best_match} (score: {best_score:.2f})")
+        return best_match, True, ""
     
-    if pneumonia_match >= 0.5:
-        missing_cols = pneumonia_cols - df_cols
-        return "Unknown", False, f"File partially matches Pneumonia schema but missing required columns: {', '.join(sorted(missing_cols))}"
-    
-    return "Unknown", False, "File schema not recognized. Please upload a file with either Diabetes or Pneumonia readmission patient data with the required columns."
+    available_diseases = ", ".join(LOADED_MODELS.keys())
+    return "Unknown", False, f"Unable to determine disease type. Available models: {available_diseases}. Please ensure your file contains appropriate medical data columns."
 
-def risk_band(p):
-    if p < 0.33:
-        return "Low"
-    elif p < 0.66:
-        return "Medium"
-    else:
-        return "High"
+def risk_band(p: float) -> str:
+    """Categorize probability into risk bands"""
+    if p < 0.33: return "Low"
+    if p < 0.66: return "Medium"
+    return "High"
 
 # Upload endpoint with validation
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), format: str = Query("json")):
     try:
-        # Read file
         contents = await file.read()
         
         try:
@@ -127,15 +254,13 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
                 detail=f"Error reading file: {str(e)}. Please ensure the file is a valid CSV or Excel file."
             )
         
-        # Validate empty file
         if df.empty or len(df) == 0:
             raise HTTPException(
                 status_code=400,
                 detail="The uploaded file is empty. Please upload a file with patient data."
             )
         
-        # Validate schema
-        disease, is_valid, error_message = validate_schema(df)
+        disease, is_valid, error_message = validate_schema(df, file.filename)
         
         if not is_valid:
             raise HTTPException(
@@ -143,24 +268,46 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
                 detail=error_message
             )
         
-        # Select model
-        model = diabetes_model if disease == "Diabetes" else pneumonia_model
+        if disease not in LOADED_MODELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model for {disease} is not loaded. Available models: {', '.join(LOADED_MODELS.keys())}"
+            )
         
-        # Predict
+        model_config = LOADED_MODELS[disease]
+        model = model_config["model"]
+        train_cols = model_config["train_cols"]
+        cat_levels = model_config["cat_levels"]
+        threshold = model_config["threshold"]
+        
         try:
-            probs = model.predict_proba(df)[:, 1]
-            preds = model.predict(df)
+            X = prepare_X(df, train_cols, cat_levels)
         except Exception as e:
             raise HTTPException(
                 status_code=400,
-                detail=f"Error generating predictions. The data may not match the expected format: {str(e)}"
+                detail=f"Error preparing data for {disease} model: {str(e)}"
+            )
+        
+        try:
+            if hasattr(model, 'predict_proba'):
+                probs = model.predict_proba(X)[:, 1]
+            else:
+                import numpy as np
+                predictions = model.predict(X)
+                probs = 1 / (1 + np.exp(-predictions.ravel()))
+            
+            preds = (probs >= threshold).astype(int)
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error generating predictions for {disease}: {str(e)}"
             )
         
         df["Predicted_Prob"] = probs.round(3)
         df["Predicted_Class"] = preds
         df["Risk_Band"] = [risk_band(p) for p in probs]
         
-        # JSON output
         if format == "json":
             return {
                 "disease": disease,
@@ -168,16 +315,16 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
                 "total_records": len(df),
                 "high_risk_count": len([r for r in df["Risk_Band"] if r == "High"]),
                 "medium_risk_count": len([r for r in df["Risk_Band"] if r == "Medium"]),
-                "low_risk_count": len([r for r in df["Risk_Band"] if r == "Low"])
+                "low_risk_count": len([r for r in df["Risk_Band"] if r == "Low"]),
+                "threshold": threshold
             }
         
-        # PDF output
         elif format == "pdf":
-            buf = generate_pdf_report(df, disease, model)
+            buf = generate_pdf_report(df, disease, threshold)
             return StreamingResponse(
                 buf,
                 media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename={disease}_report.pdf"}
+                headers={"Content-Disposition": f"attachment; filename={disease.replace(' ', '_')}_report.pdf"}
             )
     
     except HTTPException:
@@ -188,169 +335,75 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
             detail=f"An unexpected error occurred: {str(e)}"
         )
 
-# PDF helpers
-def add_cover_page(pdf, df, disease):
-    patient_name = df.get("patient_name", ["Unknown"]).iloc[0]
-    patient_id = df.get("patient_id", ["Unknown"]).iloc[0]
-    room_id = df.get("room_id", ["Unknown"]).iloc[0]
-    today = datetime.today().strftime("%Y-%m-%d")
-
-    plt.figure(figsize=(8.5, 11))
-    plt.axis("off")
-    plt.text(0.5, 0.9, "Readmission Risk Report", ha="center", fontsize=20, weight="bold")
-    plt.text(0.1, 0.75, f"Patient Name: {patient_name}", fontsize=14)
-    plt.text(0.1, 0.70, f"Patient ID: {patient_id}", fontsize=14)
-    plt.text(0.1, 0.65, f"Room ID: {room_id}", fontsize=14)
-    plt.text(0.1, 0.60, f"Disease Type: {disease}", fontsize=14)
-    plt.text(0.1, 0.55, f"Report Date: {today}", fontsize=14)
-    pdf.savefig(); plt.close()
-
-def add_summary_table(pdf, df, disease):
-    counts = df["Risk_Band"].value_counts().reindex(["Low","Medium","High"], fill_value=0)
-    fig, ax = plt.subplots(figsize=(6,3))
-    ax.axis("off")
-    table_data = [["Risk Band", "Count"]] + [[band, count] for band, count in counts.items()]
-    table = ax.table(cellText=table_data, loc="center", cellLoc="center", colWidths=[0.5,0.3])
-    table.auto_set_font_size(False); table.set_fontsize(12); table.scale(1.2, 1.2)
-    ax.set_title(f"{disease} – Risk Band Summary", fontsize=14, weight="bold", pad=20)
-    pdf.savefig(fig, bbox_inches="tight"); plt.close(fig)
-
-# Helper: Cover Page
-def add_cover_page(pdf, df, disease):
-    today = datetime.today().strftime("%Y-%m-%d")
-    plt.figure(figsize=(8.5, 11))
-    plt.axis("off")
-    plt.text(0.5, 0.9, "Readmission Risk Report", ha="center", fontsize=24, weight="bold")
-    plt.axhline(0.85, color="black", linewidth=1)
-    plt.text(0.1, 0.75, f"Patient Name: {df.get('patient_name', ['Unknown']).iloc[0]}", fontsize=14)
-    plt.text(0.1, 0.70, f"Patient ID: {df.get('patient_id', ['Unknown']).iloc[0]}", fontsize=14)
-    plt.text(0.1, 0.65, f"Room ID: {df.get('room_id', ['Unknown']).iloc[0]}", fontsize=14)
-    plt.text(0.1, 0.60, f"Disease Type: {disease}", fontsize=14)
-    plt.text(0.1, 0.55, f"Report Date: {today}", fontsize=14)
-    pdf.savefig(); plt.close()
-
-def add_patient_metadata(pdf, df):
-    fig, ax = plt.subplots(figsize=(8.5, 11))
-    ax.axis("off")
-
-    # Prepare table data
-    columns = df.columns.tolist()
-    table_data = [columns] + df.astype(str).values.tolist()
-
-    # Create table
-    table = ax.table(cellText=table_data, loc="center", cellLoc="center",
-                     colWidths=[1.0/len(columns)]*len(columns))
-
-    # Style header
-    for i in range(len(columns)):
-        cell = table[0, i]
-        cell.set_text_props(weight="bold", ha="center", color="white")
-        cell.set_facecolor("#4CAF50")
-
-    # Style rows
-    for row in range(1, len(table_data)):
-        for col in range(len(columns)):
-            cell = table[row, col]
-            cell.set_facecolor("#f9f9f9" if row % 2 == 0 else "#ffffff")
-            cell.set_text_props(ha="center")
-
-    table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    table.scale(1.0, 1.2)
-
-    ax.set_title("Patient Metadata", fontsize=16, weight="bold", pad=20)
-    pdf.savefig(fig, bbox_inches="tight")
-    plt.close(fig)
-
-
-# Helper: Key Findings
-def add_key_findings(pdf, df, disease):
-    total = len(df)
-    high_pct = round((df["Risk_Band"].eq("High").mean() * 100), 1)
-    avg_prob = round(df["Predicted_Prob"].mean(), 3)
-    last_risk = df["Risk_Band"].iloc[-1]
-
-    plt.figure(figsize=(8.5, 11))
-    plt.axis("off")
-    plt.text(0.5, 0.9, f"{disease} – Key Findings", ha="center", fontsize=20, weight="bold")
-    plt.text(0.1, 0.75, f"Total Visits: {total}", fontsize=14)
-    plt.text(0.1, 0.70, f"High Risk Visits: {high_pct}%", fontsize=14)
-    plt.text(0.1, 0.65, f"Average Predicted Probability: {avg_prob}", fontsize=14)
-    plt.text(0.1, 0.60, f"Most Recent Visit Risk: {last_risk}", fontsize=14)
-    pdf.savefig(); plt.close()
-
-# Helper: Summary Table
-def add_summary_table(pdf, df):
-    counts = df["Risk_Band"].value_counts().reindex(["Low","Medium","High"], fill_value=0)
-    fig, ax = plt.subplots(figsize=(6,3))
-    ax.axis("off")
-    table_data = [["Risk Band", "Count"]] + [[band, count] for band, count in counts.items()]
-    table = ax.table(cellText=table_data, loc="center", cellLoc="center", colWidths=[0.5,0.3])
-    table.auto_set_font_size(False); table.set_fontsize(12); table.scale(1.2, 1.2)
-    for i, key in enumerate(table.get_celld()):
-        cell = table.get_celld()[key]
-        if key[0] == 0:  # header row
-            cell.set_facecolor("#f0f0f0")
-            cell.set_text_props(weight="bold")
-        elif key[0] % 2 == 0:
-            cell.set_facecolor("#ffffff")
-        else:
-            cell.set_facecolor("#f9f9f9")
-    ax.set_title("Risk Band Summary", fontsize=14, weight="bold", pad=20)
-    pdf.savefig(fig, bbox_inches="tight"); plt.close(fig)
-
-# Helper: Risk Trajectory
-def add_risk_trajectory(pdf, df):
-    plt.figure(figsize=(8,4))
-    sns.lineplot(x=range(len(df)), y=df["Predicted_Prob"], marker="o", color="#2196F3")
-    plt.title("Risk Trajectory Over Time", fontsize=16)
-    plt.xlabel("Visit Index"); plt.ylabel("Predicted Probability")
-    plt.grid(True)
-    pdf.savefig(); plt.close()
-
-# Helper: Risk Distribution
-def add_risk_distribution(pdf, df):
-    risk_colors = {"Low":"#4CAF50","Medium":"#FFC107","High":"#F44336"}
-    plt.figure(figsize=(6,4))
-    sns.countplot(x="Risk_Band", data=df, order=["Low","Medium","High"], palette=risk_colors)
-    plt.title("Risk Band Distribution", fontsize=16)
-    plt.xlabel("Risk Band"); plt.ylabel("Count")
-    plt.grid(True)
-    pdf.savefig(); plt.close()
-
-# Helper: SHAP Summary (Optional)
-def add_shap_summary(pdf, df, model):
-    try:
-        X = df.drop(columns=["Predicted_Prob","Predicted_Class","Risk_Band",
-                             "patient_name","patient_id","room_id"], errors="ignore")
-        for col in X.columns:
-            X[col] = (X[col].astype(str)
-                      .str.replace("[","",regex=False)
-                      .str.replace("]","",regex=False))
-            X[col] = pd.to_numeric(X[col], errors="coerce")
-        X = X.fillna(0)
-
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X)
-        shap.summary_plot(shap_values, X, show=False)
-        pdf.savefig(bbox_inches="tight"); plt.close()
-    except Exception as e:
-        plt.figure(figsize=(8.5, 11))
-        plt.axis("off")
-        plt.text(0.5, 0.5, f"SHAP Summary Plot Unavailable\n{e}", 
-                 ha="center", va="center", fontsize=14, color="red")
-        pdf.savefig(); plt.close()
-
-# Main PDF Generator
-def generate_pdf_report(df, disease, model):
+# PDF Generation Functions
+def generate_pdf_report(df: pd.DataFrame, disease: str, threshold: float) -> io.BytesIO:
+    """Generate PDF report with results"""
     buf = io.BytesIO()
+    
     with PdfPages(buf) as pdf:
-        add_cover_page(pdf, df, disease)
-        add_patient_metadata(pdf, df)
-        add_key_findings(pdf, df, disease)
-        add_summary_table(pdf, df)
-        add_risk_trajectory(pdf, df)
-        add_risk_distribution(pdf, df)
-        add_shap_summary(pdf, df, model)
+        fig = plt.figure(figsize=(8.5, 11))
+        plt.axis("off")
+        plt.text(0.5, 0.7, f"{disease} Readmission Risk Report", 
+                 ha="center", fontsize=24, weight="bold")
+        plt.text(0.5, 0.6, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+                 ha="center", fontsize=12)
+        plt.text(0.5, 0.5, f"Total Patients: {len(df)}", ha="center", fontsize=14)
+        plt.text(0.5, 0.45, f"Threshold: {threshold:.2f}", ha="center", fontsize=12)
+        pdf.savefig()
+        plt.close()
+        
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.axis("off")
+        
+        high_count = len(df[df["Risk_Band"] == "High"])
+        medium_count = len(df[df["Risk_Band"] == "Medium"])
+        low_count = len(df[df["Risk_Band"] == "Low"])
+        
+        summary_data = [
+            ["Risk Level", "Count", "Percentage"],
+            ["High", high_count, f"{high_count/len(df)*100:.1f}%"],
+            ["Medium", medium_count, f"{medium_count/len(df)*100:.1f}%"],
+            ["Low", low_count, f"{low_count/len(df)*100:.1f}%"],
+        ]
+        
+        table = ax.table(cellText=summary_data, loc="center", cellLoc="center")
+        table.auto_set_font_size(False)
+        table.set_fontsize(12)
+        table.scale(1, 2)
+        
+        for i in range(1, 4):
+            if summary_data[i][0] == "High":
+                table[(i, 0)].set_facecolor('#ffcccc')
+            elif summary_data[i][0] == "Medium":
+                table[(i, 0)].set_facecolor('#fff4cc')
+            else:
+                table[(i, 0)].set_facecolor('#ccffcc')
+        
+        pdf.savefig()
+        plt.close()
+        
+        fig, ax = plt.subplots(figsize=(8.5, 6))
+        risk_counts = df["Risk_Band"].value_counts()
+        colors_map = {"High": "#ef4444", "Medium": "#f59e0b", "Low": "#10b981"}
+        
+        bars = ax.bar(
+            risk_counts.index, 
+            risk_counts.values, 
+            color=[colors_map.get(x, '#cccccc') for x in risk_counts.index]
+        )
+        
+        ax.set_title(f"{disease} - Risk Distribution", fontsize=16, weight="bold")
+        ax.set_xlabel("Risk Level", fontsize=12)
+        ax.set_ylabel("Number of Patients", fontsize=12)
+        
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{int(height)}',
+                   ha='center', va='bottom', fontsize=10)
+        
+        pdf.savefig()
+        plt.close()
+    
     buf.seek(0)
     return buf

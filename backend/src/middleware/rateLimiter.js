@@ -56,7 +56,7 @@ const createRateLimiter = (options = {}) => {
 
 export const generalLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 9999,
   message: 'Too many requests, please slow down.'
 });
 
