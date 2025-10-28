@@ -30,8 +30,7 @@ export const HistoryPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [diseaseFilter, setDiseaseFilter] = useState<string>('all');
-  
-  // Track if we're already loading to prevent duplicate requests
+
   const isLoadingRef = useRef(false);
 
   const user = authService.getUser();
@@ -42,7 +41,6 @@ export const HistoryPage: React.FC = () => {
   }, [currentPage, diseaseFilter]);
 
   const loadHistory = async () => {
-    // Prevent duplicate simultaneous requests
     if (isLoadingRef.current) {
       console.log('History already loading, skipping duplicate request');
       return;
@@ -51,10 +49,9 @@ export const HistoryPage: React.FC = () => {
     isLoadingRef.current = true;
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const response = await historyService.getHistory(currentPage, 20, diseaseFilter);
-      
       setHistoryItems(response.data.history);
       setStatistics(response.data.statistics);
       setTotalPages(response.data.pagination.totalPages);
@@ -68,10 +65,7 @@ export const HistoryPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string, fileName: string) => {
-    if (!confirm(`Are you sure you want to delete "${fileName}"?`)) {
-      return;
-    }
-
+    if (!confirm(`Are you sure you want to delete "${fileName}"?`)) return;
     try {
       await historyService.deleteHistory(id);
       await loadHistory();
@@ -80,7 +74,7 @@ export const HistoryPage: React.FC = () => {
     }
   };
 
-  // Export functions remain the same...
+  // Export functions
   const exportUploadsToCSV = () => {
     const csvData = historyItems.map(item => ({
       'File Name': item.fileName,
@@ -96,22 +90,19 @@ export const HistoryPage: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(csvData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Upload History');
-    
     XLSX.writeFile(wb, `upload_history_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
   };
 
   const exportUploadsToPDF = () => {
     const doc = new jsPDF();
-    
     doc.setFontSize(18);
     doc.text('Upload History Report', 14, 20);
-    
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
     doc.text(`Total Uploads: ${statistics.totalUploads}`, 14, 34);
     doc.text(`Total Records Processed: ${statistics.totalRecords}`, 14, 40);
     doc.text(`High Risk Cases: ${statistics.totalHighRisk}`, 14, 46);
-    
+
     const tableData = historyItems.map(item => [
       item.fileName,
       item.uploadDate,
@@ -154,21 +145,18 @@ export const HistoryPage: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(csvData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Records Summary');
-    
     XLSX.writeFile(wb, `records_summary_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
   };
 
   const exportRecordsToPDF = () => {
     const doc = new jsPDF();
-    
     doc.setFontSize(18);
     doc.text('Records Summary Report', 14, 20);
-    
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
     doc.text(`Total Records Processed: ${statistics.totalRecords}`, 14, 34);
     doc.text(`Across ${statistics.totalUploads} uploads`, 14, 40);
-    
+
     const tableData = historyItems.map(item => [
       item.fileName,
       item.uploadDate,
@@ -202,21 +190,18 @@ export const HistoryPage: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(csvData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'High Risk Cases');
-    
     XLSX.writeFile(wb, `high_risk_cases_${new Date().toISOString().split('T')[0]}.csv`, { bookType: 'csv' });
   };
 
   const exportHighRiskToPDF = () => {
     const doc = new jsPDF();
-    
     doc.setFontSize(18);
     doc.text('High Risk Cases Report', 14, 20);
-    
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
     doc.text(`Total High Risk Cases: ${statistics.totalHighRisk}`, 14, 34);
     doc.text(`Across ${statistics.totalUploads} uploads`, 14, 40);
-    
+
     const tableData = historyItems
       .filter(item => item.highRiskCount > 0)
       .map(item => [
@@ -281,7 +266,6 @@ export const HistoryPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Statistics Cards with Export Menu */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {stats.map((stat, index) => (
             <Card key={index} className="relative">
@@ -327,45 +311,47 @@ export const HistoryPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Filter */}
-        <div className="mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Filter by Disease:</label>
-                <select
-                  value={diseaseFilter}
-                  onChange={(e) => {
-                    setDiseaseFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">All Diseases</option>
-                  <option value="Diabetes">Diabetes</option>
-                  <option value="Pneumonia">Pneumonia</option>
-                  <option value="Unknown">Unknown</option>
-                </select>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* History List */}
         <Card>
-          <CardHeader>
-            <CardTitle>Recent Uploads</CardTitle>
-            <CardDescription>
-              Your most recent data uploads and predictions
-            </CardDescription>
+          <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <CardTitle>Recent Uploads</CardTitle>
+              <CardDescription>
+                Your most recent data uploads and predictions
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2 md:gap-3 px-3 py-2">
+              <label
+                htmlFor="diseaseFilter"
+                className="text-sm font-medium text-gray-700 whitespace-nowrap"
+              >
+                Filter by Disease:
+              </label>
+              <select
+                id="diseaseFilter"
+                value={diseaseFilter}
+                onChange={(e) => {
+                  setDiseaseFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              >
+                <option value="all">All</option>
+                <option value="Diabetes">Diabetes</option>
+                <option value="Pneumonia">Pneumonia</option>
+                <option value="Hypertension">Hypertension</option>
+                <option value="CKD">Chronic Kidney Disease</option>
+                <option value="COPD">Chronic Obstructive Pulmonary Disease</option>
+              </select>
+            </div>
           </CardHeader>
+
           <CardContent>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+              <div className="border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 bg-red-50">
                 {error}
               </div>
             )}
-
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -384,11 +370,11 @@ export const HistoryPage: React.FC = () => {
                   {historyItems.map((item) => (
                     <div
                       key={item._id}
-                      className="border rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
+                      className="border rounded-xl p-4 hover:shadow-md transition-all duration-200"
                     >
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div className="flex items-start gap-3 flex-1">
-                          <div className="p-2 bg-blue-50 rounded-lg">
+                          <div className="p-2 bg-blue-100 rounded-lg">
                             <FileSpreadsheet className="w-5 h-5 text-blue-600" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -401,7 +387,7 @@ export const HistoryPage: React.FC = () => {
                                 {item.uploadDate} at {item.uploadTime}
                               </span>
                               {item.disease && (
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline" className="text-xs capitalize">
                                   {item.disease}
                                 </Badge>
                               )}
@@ -409,41 +395,43 @@ export const HistoryPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex gap-6 text-sm">
-                          <div>
-                            <p className="text-gray-600">Records</p>
-                            <p className="font-semibold text-gray-900">{item.recordCount}</p>
+                        <div className="flex items-center justify-between gap-5">
+                          <div className="flex items-center gap-5 text-sm">
+                            <div className="flex flex-col items-center min-w-[80px]">
+                              <p className="text-gray-600">Records</p>
+                              <p className="font-semibold text-gray-900">{item.recordCount}</p>
+                            </div>
+                            <div className="flex flex-col items-center min-w-[80px]">
+                              <p className="text-gray-600">High Risk</p>
+                              <p className="font-semibold text-red-600">{item.highRiskCount}</p>
+                            </div>
+                            <div className="flex flex-col items-center min-w-[80px]">
+                              <p className="text-gray-600">Medium Risk</p>
+                              <p className="font-semibold text-yellow-600">{item.mediumRiskCount}</p>
+                            </div>
+                            <div className="flex flex-col items-center min-w-[80px]">
+                              <p className="text-gray-600">Low Risk</p>
+                              <p className="font-semibold text-green-600">{item.lowRiskCount}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-gray-600">High Risk</p>
-                            <p className="font-semibold text-red-600">{item.highRiskCount}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Medium Risk</p>
-                            <p className="font-semibold text-yellow-600">{item.mediumRiskCount}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Low Risk</p>
-                            <p className="font-semibold text-green-600">{item.lowRiskCount}</p>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-2">
-                          <Badge variant="success" className="flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Completed
-                          </Badge>
-                          
-                          {canDelete && (
-                            <Button
-                              onClick={() => handleDelete(item._id, item.fileName)}
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-6 min-w-[120px] justify-end">
+                            <Badge variant="success" className="flex items-center gap-1 px-2 py-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Completed
+                            </Badge>
+
+                            {canDelete && (
+                              <Button
+                                onClick={() => handleDelete(item._id, item.fileName)}
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -453,7 +441,7 @@ export const HistoryPage: React.FC = () => {
                 {totalPages > 1 && (
                   <div className="flex items-center justify-center gap-2 mt-6">
                     <Button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
                       variant="outline"
                       size="sm"
@@ -464,7 +452,7 @@ export const HistoryPage: React.FC = () => {
                       Page {currentPage} of {totalPages}
                     </span>
                     <Button
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
                       variant="outline"
                       size="sm"
