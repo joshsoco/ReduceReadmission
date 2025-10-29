@@ -12,7 +12,7 @@ import { authService } from '@/features/auth/services/authService';
 export const SettingsPage: React.FC = () => {
   const user = authService.getUser();
 
-  // Profile display state (read-only)
+  // Profile display (read-only)
   const [profileData, setProfileData] = useState({
     name: '',
     email: '',
@@ -61,7 +61,7 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     setPasswordMessage(null);
 
-    // Validation
+    // Password validation
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
       return;
@@ -76,7 +76,7 @@ export const SettingsPage: React.FC = () => {
 
     try {
       const response = await settingsService.changePassword(passwordData);
-      
+
       if (response.success) {
         setPasswordMessage({ type: 'success', text: 'Password changed successfully' });
         setPasswordData({
@@ -114,17 +114,18 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         <div className="space-y-6">
-          {/* Profile Information (Read-only) */}
-          <Card>
+          {/* Profile information (read-only) */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="w-5 h-5 text-blue-600" />
                 Profile Information
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-gray-600">
                 Your account details (read-only)
               </CardDescription>
             </CardHeader>
+
             <CardContent>
               {isLoadingProfile ? (
                 <div className="flex items-center justify-center py-8">
@@ -149,7 +150,9 @@ export const SettingsPage: React.FC = () => {
                   <div className="space-y-2">
                     <Label className="text-gray-600">Role</Label>
                     <div className="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
-                      <p className="text-gray-900 capitalize">{profileData.role || user?.role || 'N/A'}</p>
+                      <p className="text-gray-900 capitalize">
+                        {profileData.role || user?.role || 'N/A'}
+                      </p>
                     </div>
                   </div>
 
@@ -170,7 +173,7 @@ export const SettingsPage: React.FC = () => {
                   <Alert className="bg-blue-50 border-blue-200">
                     <AlertCircle className="h-4 w-4 text-blue-600" />
                     <AlertDescription className="text-blue-800">
-                      Profile information cannot be edited. Contact system administrator for changes.
+                      Profile information cannot be edited. Contact the system administrator for changes.
                     </AlertDescription>
                   </Alert>
                 </div>
@@ -178,14 +181,15 @@ export const SettingsPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Password Settings */}
-          <Card>
+
+          {/* Password settings */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Lock className="w-5 h-5 text-purple-600" />
                 Change Password
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-gray-600">
                 Update your password to keep your account secure
               </CardDescription>
             </CardHeader>
@@ -197,7 +201,9 @@ export const SettingsPage: React.FC = () => {
                     id="currentPassword"
                     type="password"
                     value={passwordData.currentPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                    onChange={(e) =>
+                      setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                    }
                     placeholder="Enter current password"
                     disabled={isLoadingPassword}
                     required
@@ -210,7 +216,9 @@ export const SettingsPage: React.FC = () => {
                     id="newPassword"
                     type="password"
                     value={passwordData.newPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                    onChange={(e) =>
+                      setPasswordData({ ...passwordData, newPassword: e.target.value })
+                    }
                     placeholder="Enter new password"
                     disabled={isLoadingPassword}
                     required
@@ -224,7 +232,9 @@ export const SettingsPage: React.FC = () => {
                     id="confirmPassword"
                     type="password"
                     value={passwordData.confirmPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                    onChange={(e) =>
+                      setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                    }
                     placeholder="Confirm new password"
                     disabled={isLoadingPassword}
                     required
@@ -232,7 +242,9 @@ export const SettingsPage: React.FC = () => {
                 </div>
 
                 {passwordMessage && (
-                  <Alert variant={passwordMessage.type === 'error' ? 'destructive' : 'default'}>
+                  <Alert
+                    variant={passwordMessage.type === 'error' ? 'destructive' : 'default'}
+                  >
                     {passwordMessage.type === 'success' ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
@@ -245,7 +257,7 @@ export const SettingsPage: React.FC = () => {
                 <Button
                   type="submit"
                   disabled={isLoadingPassword}
-                  className="w-full"
+                  className="w-full hover:bg-purple-700 transition-colors duration-200"
                 >
                   {isLoadingPassword ? (
                     <>
@@ -263,10 +275,11 @@ export const SettingsPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Account Status */}
-          <Card>
+
+          {/* Account status */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <SettingsIcon className="w-5 h-5 text-green-600" />
                 Account Status
               </CardTitle>
@@ -282,11 +295,13 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-gray-600">Account Type</span>
-                  <span className="font-medium">{user?.userType || 'Admin'}</span>
+                  <span className="font-medium text-gray-800">{user?.userType || 'Admin'}</span>
                 </div>
                 <div className="flex justify-between py-2">
                   <span className="text-gray-600">Access Level</span>
-                  <span className="font-medium capitalize">{user?.role || 'Admin'}</span>
+                  <span className="font-medium capitalize text-gray-800">
+                    {user?.role || 'Admin'}
+                  </span>
                 </div>
               </div>
             </CardContent>
