@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, Heart, Target, Award, Mail } from 'lucide-react';
+import { Info, Heart, Award, Mail, Clock, Phone } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Navbar } from '@/components/Navbar';
 
@@ -16,194 +16,186 @@ export const AboutPage: React.FC = () => {
           </p>
         </div>
 
-        {}
-        <Card className="mb-6">
+        <Card className="mb-8 shadow-sm hover:shadow-md transition-shadow duration-300">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-6 h-6 text-blue-600" />
-              Our Mission
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-700 leading-relaxed">
-              Our mission is to reduce hospital readmissions by providing healthcare professionals
-              with advanced predictive analytics tools. We leverage machine learning and data science
-              to identify patients at high risk of readmission, enabling proactive interventions and
-              improved patient outcomes.
-            </p>
-          </CardContent>
-        </Card>
-
-        {}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 font-semibold text-gray-900">
               <Info className="w-6 h-6 text-green-600" />
               About the System
             </CardTitle>
-            <CardDescription>
-              Powered by advanced machine learning algorithms
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-2">What We Do</h3>
+
+          <CardContent className="space-y-6">
+            <section>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">What We Do</h3>
               <p className="text-gray-700 leading-relaxed">
-                The Hospital Readmission Prediction System analyzes patient data to predict the
-                likelihood of hospital readmission within 30 days of discharge. Our system processes
-                multiple factors including patient demographics, medical history, diagnosis codes,
-                and treatment patterns to generate accurate risk assessments.
+                The Hospital Readmission Prediction System analyzes patient data to predict the likelihood
+                of hospital readmission within 30 days of discharge. Our system processes multiple factors
+                including patient demographics, medical history, diagnosis codes, and treatment patterns to
+                generate accurate risk assessments.
               </p>
-            </div>
+            </section>
 
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-2">How It Works</h3>
-              <ul className="space-y-2 text-gray-700">
-                <li className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 flex-shrink-0" />
-                  <span>Upload patient data in Excel format or enter manually</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 flex-shrink-0" />
-                  <span>Our ML model analyzes multiple risk factors</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 flex-shrink-0" />
-                  <span>Receive instant risk predictions and recommendations</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-2 flex-shrink-0" />
-                  <span>Track trends and monitor patient outcomes</span>
-                </li>
+            <section>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">How It Works</h3>
+              <ul className="space-y-3 text-gray-700">
+                {[
+                  "Upload patient data in Excel format or enter manually",
+                  "Our ML model analyzes multiple risk factors",
+                  "Receive instant risk predictions and recommendations",
+                  "Track trends and monitor patient outcomes",
+                ].map((step, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <span className="mt-2 w-2 h-2 bg-blue-600 rounded-full flex-shrink-0" />
+                    <span>{step}</span>
+                  </li>
+                ))}
               </ul>
-            </div>
+            </section>
           </CardContent>
         </Card>
 
-        {}
-        <Card className="mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          { }
+          <Card className="h-full hover:shadow-md transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                <Award className="w-6 h-6 text-purple-600" />
+                Key Features
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: "Accurate Predictions",
+                    desc: "94%+ accuracy in predicting readmission risk",
+                    color: "blue",
+                  },
+                  {
+                    title: "Real-time Analysis",
+                    desc: "Instant risk assessment for timely interventions",
+                    color: "green",
+                  },
+                  {
+                    title: "Easy Integration",
+                    desc: "Upload Excel files or enter data manually",
+                    color: "purple",
+                  },
+                  {
+                    title: "Comprehensive Reports",
+                    desc: "Detailed analytics and trend visualization",
+                    color: "orange",
+                  },
+                ].map((feature, index) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg bg-${feature.color}-50 border border-${feature.color}-100 hover:shadow-sm transition`}
+                  >
+                    <h4 className={`font-semibold text-${feature.color}-900 mb-1`}>
+                      {feature.title}
+                    </h4>
+                    <p className={`text-sm text-${feature.color}-700`}>
+                      {feature.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          { }
+          <Card className="h-full hover:shadow-md transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-semibold ">
+                <Heart className="w-6 h-6 text-red-600" />
+                Benefits
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[
+                  {
+                    num: "1",
+                    title: "Improved Patient Outcomes",
+                    desc: "Early identification of high-risk patients enables proactive care",
+                    color: "red",
+                  },
+                  {
+                    num: "2",
+                    title: "Reduced Healthcare Costs",
+                    desc: "Lower readmission rates mean reduced costs for hospitals and patients",
+                    color: "blue",
+                  },
+                  {
+                    num: "3",
+                    title: "Enhanced Decision Making",
+                    desc: "Data-driven insights support better clinical decisions",
+                    color: "green",
+                  },
+                  {
+                    num: "4",
+                    title: "Resource Optimization",
+                    desc: "Allocate healthcare resources more effectively",
+                    color: "purple",
+                  },
+                ].map((benefit, index) => (
+                  <div key={index} className="flex items-start gap-3">
+                    <div
+                      className={`w-8 h-8 rounded-full bg-${benefit.color}-100 flex items-center justify-center flex-shrink-0 mt-0.5`}
+                    >
+                      <span className={`text-${benefit.color}-600 font-bold text-sm`}>
+                        {benefit.num}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">
+                        {benefit.title}
+                      </h4>
+                      <p className="text-sm text-gray-600">{benefit.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="mt-6 shadow-sm hover:shadow-md transition-shadow duration-300">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Award className="w-6 h-6 text-purple-600" />
-              Key Features
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">Accurate Predictions</h4>
-                <p className="text-sm text-blue-700">
-                  94%+ accuracy in predicting readmission risk
-                </p>
-              </div>
-
-              <div className="p-4 bg-green-50 rounded-lg">
-                <h4 className="font-semibold text-green-900 mb-2">Real-time Analysis</h4>
-                <p className="text-sm text-green-700">
-                  Instant risk assessment for timely interventions
-                </p>
-              </div>
-
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <h4 className="font-semibold text-purple-900 mb-2">Easy Integration</h4>
-                <p className="text-sm text-purple-700">
-                  Upload Excel files or enter data manually
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 rounded-lg">
-                <h4 className="font-semibold text-orange-900 mb-2">Comprehensive Reports</h4>
-                <p className="text-sm text-orange-700">
-                  Detailed analytics and trend visualization
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Heart className="w-6 h-6 text-red-600" />
-              Benefits
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-red-600 font-bold text-sm">1</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Improved Patient Outcomes</h4>
-                  <p className="text-sm text-gray-600">
-                    Early identification of high-risk patients enables proactive care
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-blue-600 font-bold text-sm">2</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Reduced Healthcare Costs</h4>
-                  <p className="text-sm text-gray-600">
-                    Lower readmission rates mean reduced costs for hospitals and patients
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-green-600 font-bold text-sm">3</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Enhanced Decision Making</h4>
-                  <p className="text-sm text-gray-600">
-                    Data-driven insights support better clinical decisions
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-purple-600 font-bold text-sm">4</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Resource Optimization</h4>
-                  <p className="text-sm text-gray-600">
-                    Allocate healthcare resources more effectively
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="w-6 h-6 text-blue-600" />
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Phone className="w-6 h-6 text-blue-600" />
               Get in Touch
             </CardTitle>
-            <CardDescription>
-              Have questions? We're here to help
+            <CardDescription className="text-gray-600">
+              Have questions? We're here to help.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 text-gray-700">
-              <p>
-                <strong>Email:</strong> itlogjoshua585@gmail.com
-              </p>
-              <p>
-                <strong>Support Hours:</strong> Every time i want
-              </p>
-              <p className="text-sm text-gray-600 pt-3 border-t">
-                For technical support or questions about using the system, please contact our
-                support team or refer to the documentation in the Help section.
+            <div className="text-gray-700">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 h-full">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <p className="font-medium text-gray-900">Email</p>
+                  </div>
+                  <p className="text-sm text-gray-800 pl-8">support@readmissions.com</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg border border-green-100 h-full">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Clock className="w-5 h-5 text-green-600" />
+                    <p className="font-medium text-gray-900">Support Hours</p>
+                  </div>
+                  <p className="text-sm text-gray-800 pl-8">
+                    Monday – Friday, 9:00 AM – 6:00 PM (PHT)
+                  </p>
+                  <p className="text-sm text-gray-600 pl-8">
+                    Responses may take up to 24 hours during weekends.
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 pt-3 border-t leading-relaxed">
+                For technical support or questions about using the system, please contact our support team
+                or refer to the documentation.
               </p>
             </div>
           </CardContent>
