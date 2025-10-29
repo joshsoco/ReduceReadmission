@@ -268,7 +268,10 @@ export const HistoryPage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {stats.map((stat, index) => (
-            <Card key={index} className="relative">
+            <Card
+              key={index}
+              className="relative hover:shadow-md transition-shadow duration-300"
+            >
               <CardContent className="p-6">
                 <div className="absolute top-4 right-4">
                   <DropdownMenu>
@@ -311,7 +314,7 @@ export const HistoryPage: React.FC = () => {
           ))}
         </div>
 
-        <Card>
+        <Card className="hover:shadow-md transition-shadow duration-300">
           <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <CardTitle>Recent Uploads</CardTitle>
