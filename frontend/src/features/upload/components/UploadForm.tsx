@@ -50,7 +50,8 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
 
   useEffect(() => {
     if (status === 'success' && uploadResponse?.data && onUploadSuccess) {
-      onUploadSuccess(uploadResponse.data, file?.name || 'upload');
+      // ✅ Pass file size as third parameter
+      onUploadSuccess(uploadResponse.data, file?.name || 'upload', file?.size);
     }
   }, [status, uploadResponse, file, onUploadSuccess]);
 
@@ -215,8 +216,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                   <div className="mt-2 text-sm">
                     <p>File: {uploadResponse.data.fileName}</p>
                     <p>Processed {uploadResponse.data.rowCount} records</p>
-                    {/* TODO: Show prediction summary when ML backend is ready */}
-                    {/* <p>High Risk: {uploadResponse.data.predictions?.filter(p => p.riskLevel === 'High').length}</p> */}
+            
                   </div>
                 )}
               </AlertDescription>
@@ -291,10 +291,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                 <Upload className="w-5 h-5" />
                 Process and Analyze Data with AI
               </Button>
-              <p className="text-xs text-center text-gray-500 mt-2">
-                {/* TODO: Remove this note when ML model is ready */}
-                Note: ML prediction model is currently in development
-              </p>
             </div>
           )}
         </CardContent>

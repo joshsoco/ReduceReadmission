@@ -1,11 +1,14 @@
-import React from 'react';
-import { Download, FileDown, Brain } from 'lucide-react';
+import React, { useState } from 'react';
+import { Download, FileDown, Brain, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+const PYTHON_ML_API = import.meta.env.VITE_PYTHON_ML_API || 'http://localhost:8000';
 
 export interface PredictionResult {
   no: number;
@@ -13,37 +16,119 @@ export interface PredictionResult {
   risk: 'High' | 'Medium' | 'Low';
   probability: number;
   reasons: string[];
-  riskScore?: number;
   recommendation?: string;
   predictedClass?: number;
+  interpretation?: string;
 }
 
 interface ResultsTableProps {
   results: PredictionResult[];
   fileName?: string;
   disease?: string;
+  originalFile?: File;
 }
 
-export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 'predictions', disease }) => {
+export const ResultsTable: React.FC<ResultsTableProps> = ({ 
+  results, 
+  fileName = 'predictions', 
+  disease,
+  originalFile 
+}) => {
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  // ✅ Debug: Log originalFile status
+  React.useEffect(() => {
+    console.log('🔍 ResultsTable Debug:', {
+      hasOriginalFile: !!originalFile,
+      fileName: originalFile?.name,
+      fileSize: originalFile?.size,
+      disease,
+      resultsCount: results.length
+    });
+  }, [originalFile, disease, results]);
+
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case 'High':
-        return 'destructive';
-      case 'Medium':
-        return 'secondary';
-      case 'Low':
-        return 'success';
-      default:
-        return 'secondary';
+      case 'High': return 'destructive';
+      case 'Medium': return 'secondary';
+      case 'Low': return 'success';
+      default: return 'secondary';
     }
   };
 
-  const exportToPDF = () => {
+  // ✅ MAIN FUNCTION: Export PDF from Backend with Interpretations
+  const exportPDFFromBackend = async () => {
+    if (!originalFile) {
+      setPdfError('Please upload a new file to generate the professional PDF report.');
+      alert('Professional PDF export requires the original file. Please upload your data again, or use "Export Excel" instead.');
+      return;
+    }
+
+    setIsDownloadingPDF(true);
+    setPdfError(null);
+
+    try {
+      console.log('📄 Requesting PDF from backend...');
+      console.log('File:', originalFile.name, 'Size:', originalFile.size);
+      
+      const formData = new FormData();
+      formData.append('file', originalFile);
+
+      const response = await fetch(`${PYTHON_ML_API}/upload?format=pdf`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server error: ${response.status}`);
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+      console.log('PDF blob size:', blob.size);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const sanitizedDisease = disease?.replace(/\s+/g, '_') || 'Unknown';
+      a.download = `${sanitizedDisease}_Risk_Report_${timestamp}.pdf`;
+      
+      // Trigger download
+      document.body.appendChild(a);
+      a.click();
+      
+      // Cleanup
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      console.log('✅ PDF downloaded successfully');
+
+    } catch (error) {
+      console.error('❌ PDF export failed:', error);
+      setPdfError((error as Error).message);
+      alert(`PDF Export Failed: ${(error as Error).message}\n\nPlease try again or use "Export Excel" instead.`);
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
+
+  // ✅ Fallback: Local PDF export (simple version without SHAP)
+  const exportPDFLocal = () => {
     const doc = new jsPDF();
 
+    // Title
     doc.setFontSize(18);
     doc.text('Hospital Readmission Prediction Results', 14, 20);
 
+    // Metadata
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
     doc.text(`Total Predictions: ${results.length}`, 14, 34);
@@ -51,44 +136,47 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       doc.text(`Disease Type: ${disease}`, 14, 40);
     }
 
+    // Create table data
     const tableData = results.map(result => [
       result.no,
       result.patientId || `P-${result.no.toString().padStart(5, '0')}`,
       result.risk,
       `${(result.probability * 100).toFixed(1)}%`,
-      result.riskScore?.toFixed(3) || 'N/A',
-      result.reasons.join('; ')
+      result.reasons.slice(0, 2).join('; '),
+      result.interpretation?.substring(0, 50) || 'N/A'
     ]);
 
+    // Add table
     autoTable(doc, {
-      head: [['No.', 'Patient ID', 'Risk', 'Probability', 'Score', 'Factors']],
+      head: [['No.', 'Patient ID', 'Risk', 'Probability', 'Top Factors', 'Interpretation']],
       body: tableData,
       startY: disease ? 46 : 40,
       theme: 'grid',
       headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8, cellPadding: 3 },
+      styles: { fontSize: 7, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 15 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 'auto' }
+        0: { cellWidth: 10 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 50 },
+        5: { cellWidth: 65 }
       }
     });
 
-    doc.save(`${fileName}_ML_predictions.pdf`);
+    doc.save(`${fileName}_predictions_local.pdf`);
   };
 
+  // Excel export
   const exportToExcel = () => {
     const excelData = results.map(result => ({
       'No.': result.no,
       'Patient ID': result.patientId || `P-${result.no.toString().padStart(5, '0')}`,
       'Risk Level': result.risk,
       'Probability': `${(result.probability * 100).toFixed(1)}%`,
-      'Risk Score': result.riskScore?.toFixed(3) || 'N/A',
       'Predicted Class': result.predictedClass || 'N/A',
       'Contributing Factors': result.reasons.join(', '),
+      'Interpretation': result.interpretation || 'N/A',
       'Recommendation': result.recommendation || ''
     }));
 
@@ -102,8 +190,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
       { wch: 12 },
       { wch: 12 },
       { wch: 12 },
-      { wch: 12 },
       { wch: 50 },
+      { wch: 60 },
       { wch: 60 }
     ];
 
@@ -128,7 +216,7 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
               ML Prediction Results
             </CardTitle>
             <CardDescription>
-              Showing {results.length} patient prediction{results.length !== 1 ? 's' : ''} from XGBoost machine learning model
+              Showing {results.length} patient prediction{results.length !== 1 ? 's' : ''} from XGBoost model
             </CardDescription>
             {disease && (
               <p className="text-xs text-gray-500 mt-1">
@@ -138,14 +226,27 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
           </div>
           <div className="flex gap-2">
             <Button
-              onClick={exportToPDF}
-              variant="outline"
+              onClick={exportPDFFromBackend}
+              variant="default"
               size="sm"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              disabled={isDownloadingPDF}
+              title={!originalFile ? 'Upload a file first to enable professional PDF export' : 'Download professional PDF report with SHAP analysis'}
             >
-              <FileDown className="w-4 h-4" />
-              Export PDF
+              {isDownloadingPDF ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileDown className="w-4 h-4" />
+                  {originalFile ? 'Export PDF Report' : 'PDF Report (Upload Required)'}
+                </>
+              )}
             </Button>
+
+            {/* Excel Export */}
             <Button
               onClick={exportToExcel}
               variant="outline"
@@ -158,7 +259,22 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
           </div>
         </div>
       </CardHeader>
+
       <CardContent>
+        {/* Error Alert */}
+        {pdfError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>PDF Export Failed:</strong> {pdfError}
+              <br />
+              <span className="text-sm mt-2 block">
+                Please try again or use "Export Excel" instead.
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Summary Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -187,8 +303,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                 <th className="text-left p-3 font-semibold text-gray-700">Patient ID</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Risk Level</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Probability</th>
-                <th className="text-left p-3 font-semibold text-gray-700">Score</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Contributing Factors</th>
+                <th className="text-left p-3 font-semibold text-gray-700">Interpretation</th>
               </tr>
             </thead>
             <tbody>
@@ -206,11 +322,17 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                   <td className="p-3 text-gray-900">
                     {(result.probability * 100).toFixed(1)}%
                   </td>
-                  <td className="p-3 text-gray-900">
-                    {result.riskScore?.toFixed(3) || 'N/A'}
-                  </td>
                   <td className="p-3 text-sm text-gray-600">
                     {result.reasons.join(', ')}
+                  </td>
+                  <td className="p-3 text-sm text-gray-600">
+                    {result.interpretation || (
+                      <span className="text-gray-400 italic">
+                        {result.risk === 'High' ? 'High readmission risk detected' : 
+                         result.risk === 'Medium' ? 'Moderate readmission risk' : 
+                         'Low readmission risk'}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -129,12 +129,23 @@ export const getUploadHistory = async (req, res) => {
 
     console.log('Fetching history for user:', user.id);
 
-    // Use string ID directly in query - mongoose will handle conversion
     const query = { userId: user.id };
 
-    // Filter by disease if provided
     if (disease && disease !== 'all') {
-      query.disease = disease;
+      const diseaseMap = {
+        'Diabetes': 'Type 2 Diabetes',
+        'CKD': 'Chronic Kidney Disease',
+        'COPD': 'COPD',
+        'Pneumonia': 'Pneumonia',
+        'Hypertension': 'Hypertension'
+      };
+
+      const mappedDisease = diseaseMap[disease] || disease;
+      
+      // Search using regex for case-insensitive partial match
+      query.disease = { $regex: new RegExp(mappedDisease, 'i') };
+      
+      console.log('Filtering by disease:', mappedDisease);
     }
 
     // Filter by date range if provided

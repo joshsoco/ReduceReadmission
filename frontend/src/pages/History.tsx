@@ -74,7 +74,158 @@ export const HistoryPage: React.FC = () => {
     }
   };
 
-  // Export functions
+  // ✅ NEW: Export individual item to CSV
+  const exportItemToCSV = (item: HistoryItem) => {
+    const csvData = [{
+      'File Name': item.fileName,
+      'Upload Date': item.uploadDate,
+      'Upload Time': item.uploadTime,
+      'Disease': item.disease || 'Unknown',
+      'Total Records': item.recordCount,
+      'High Risk': item.highRiskCount,
+      'Medium Risk': item.mediumRiskCount,
+      'Low Risk': item.lowRiskCount,
+      'High Risk %': `${((item.highRiskCount / item.recordCount) * 100).toFixed(1)}%`,
+      'Medium Risk %': `${((item.mediumRiskCount / item.recordCount) * 100).toFixed(1)}%`,
+      'Low Risk %': `${((item.lowRiskCount / item.recordCount) * 100).toFixed(1)}%`
+    }];
+
+    const ws = XLSX.utils.json_to_sheet(csvData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Upload Summary');
+
+    // Auto-size columns
+    const maxWidth = 20;
+    const cols = Object.keys(csvData[0]).map(key => ({
+      wch: Math.min(maxWidth, Math.max(key.length, String(csvData[0][key as keyof typeof csvData[0]]).length))
+    }));
+    ws['!cols'] = cols;
+
+    const sanitizedFileName = item.fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    XLSX.writeFile(wb, `${sanitizedFileName}_summary.csv`, { bookType: 'csv' });
+  };
+
+  // ✅ NEW: Export individual item to PDF
+  const exportItemToPDF = (item: HistoryItem) => {
+    const doc = new jsPDF();
+
+    // Header
+    doc.setFontSize(20);
+    doc.setTextColor(31, 41, 55); // gray-800
+    doc.text('Upload Summary Report', 14, 20);
+
+    // File Info
+    doc.setFontSize(11);
+    doc.setTextColor(75, 85, 99); // gray-600
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
+    doc.text(`File: ${item.fileName}`, 14, 37);
+    doc.text(`Uploaded: ${item.uploadDate} at ${item.uploadTime}`, 14, 44);
+    if (item.disease) {
+      doc.text(`Disease: ${item.disease}`, 14, 51);
+    }
+
+    // Summary Statistics Box
+    doc.setDrawColor(229, 231, 235); // gray-200
+    doc.setFillColor(249, 250, 251); // gray-50
+    doc.roundedRect(14, 58, 182, 40, 3, 3, 'FD');
+
+    doc.setFontSize(10);
+    doc.setTextColor(107, 114, 128); // gray-500
+    doc.text('SUMMARY STATISTICS', 20, 66);
+
+    doc.setFontSize(12);
+    doc.setTextColor(31, 41, 55); // gray-800
+    doc.text(`Total Records: ${item.recordCount}`, 20, 75);
+
+    // Risk breakdown
+    const highPct = ((item.highRiskCount / item.recordCount) * 100).toFixed(1);
+    const mediumPct = ((item.mediumRiskCount / item.recordCount) * 100).toFixed(1);
+    const lowPct = ((item.lowRiskCount / item.recordCount) * 100).toFixed(1);
+
+    doc.setTextColor(220, 38, 38); // red-600
+    doc.text(`High Risk: ${item.highRiskCount} (${highPct}%)`, 20, 84);
+
+    doc.setTextColor(245, 158, 11); // orange-500
+    doc.text(`Medium Risk: ${item.mediumRiskCount} (${mediumPct}%)`, 85, 84);
+
+    doc.setTextColor(34, 197, 94); // green-500
+    doc.text(`Low Risk: ${item.lowRiskCount} (${lowPct}%)`, 150, 84);
+
+    // Risk Distribution Table
+    doc.setFontSize(14);
+    doc.setTextColor(31, 41, 55);
+    doc.text('Risk Distribution', 14, 110);
+
+    const tableData = [
+      ['Risk Level', 'Count', 'Percentage', 'Status'],
+      [
+        'High Risk',
+        item.highRiskCount.toString(),
+        `${highPct}%`,
+        'Requires immediate follow-up'
+      ],
+      [
+        'Medium Risk',
+        item.mediumRiskCount.toString(),
+        `${mediumPct}%`,
+        'Standard monitoring required'
+      ],
+      [
+        'Low Risk',
+        item.lowRiskCount.toString(),
+        `${lowPct}%`,
+        'Routine care adequate'
+      ]
+    ];
+
+    autoTable(doc, {
+      head: [tableData[0]],
+      body: tableData.slice(1),
+      startY: 115,
+      theme: 'grid',
+      headStyles: {
+        fillColor: [59, 130, 246], // blue-500
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 10
+      },
+      bodyStyles: {
+        fontSize: 9
+      },
+      columnStyles: {
+        0: { cellWidth: 35, fontStyle: 'bold' },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 30, halign: 'center' },
+        3: { cellWidth: 90 }
+      },
+      didDrawCell: (data) => {
+        // Color-code the risk levels
+        if (data.section === 'body' && data.column.index === 0) {
+          const riskLevel = data.cell.text[0];
+          if (riskLevel === 'High Risk') {
+            doc.setFillColor(254, 226, 226); // red-100
+          } else if (riskLevel === 'Medium Risk') {
+            doc.setFillColor(254, 243, 199); // orange-100
+          } else if (riskLevel === 'Low Risk') {
+            doc.setFillColor(220, 252, 231); // green-100
+          }
+        }
+      }
+    });
+
+    // Footer
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175); // gray-400
+    doc.text('Generated by Hospital Readmission Prediction System', 14, pageHeight - 10);
+    doc.text(`Report ID: ${item._id}`, 14, pageHeight - 6);
+
+    // Save
+    const sanitizedFileName = item.fileName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    doc.save(`${sanitizedFileName}_summary.pdf`);
+  };
+
+  // ...existing export functions for overall stats...
   const exportUploadsToCSV = () => {
     const csvData = historyItems.map(item => ({
       'File Name': item.fileName,
@@ -266,6 +417,7 @@ export const HistoryPage: React.FC = () => {
           </p>
         </div>
 
+        {/* Stats Cards with Export Dropdown */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {stats.map((stat, index) => (
             <Card key={index} className="relative">
@@ -311,6 +463,7 @@ export const HistoryPage: React.FC = () => {
           ))}
         </div>
 
+        {/* Recent Uploads Table */}
         <Card>
           <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -336,12 +489,12 @@ export const HistoryPage: React.FC = () => {
                 }}
                 className="px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               >
-                <option value="all">All</option>
-                <option value="Diabetes">Diabetes</option>
+                <option value="all">All Diseases</option>
+                <option value="Type 2 Diabetes">Type 2 Diabetes</option>
                 <option value="Pneumonia">Pneumonia</option>
                 <option value="Hypertension">Hypertension</option>
-                <option value="CKD">Chronic Kidney Disease</option>
-                <option value="COPD">Chronic Obstructive Pulmonary Disease</option>
+                <option value="Chronic Kidney Disease">Chronic Kidney Disease</option>
+                <option value="COPD">COPD</option>
               </select>
             </div>
           </CardHeader>
@@ -396,6 +549,7 @@ export const HistoryPage: React.FC = () => {
                         </div>
 
                         <div className="flex items-center justify-between gap-5">
+                          {/* ✅ Risk Statistics - Keep original layout */}
                           <div className="flex items-center gap-5 text-sm">
                             <div className="flex flex-col items-center min-w-[80px]">
                               <p className="text-gray-600">Records</p>
@@ -415,12 +569,45 @@ export const HistoryPage: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-6 min-w-[120px] justify-end">
+                          {/* ✅ Action Buttons: Download Dropdown + Status + Delete */}
+                          <div className="flex items-center gap-2">
+                            {/* Download Dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                                >
+                                  <Download className="w-4 h-4 mr-1" />
+                                  Export
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem
+                                  onClick={() => exportItemToPDF(item)}
+                                  className="cursor-pointer"
+                                >
+                                  <FileDown className="w-4 h-4 mr-2 text-red-500" />
+                                  PDF Report
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => exportItemToCSV(item)}
+                                  className="cursor-pointer"
+                                >
+                                  <FileSpreadsheet className="w-4 h-4 mr-2 text-green-500" />
+                                  CSV Export
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* Status Badge */}
                             <Badge variant="success" className="flex items-center gap-1 px-2 py-1">
                               <CheckCircle2 className="w-3 h-3" />
                               Completed
                             </Badge>
 
+                            {/* Delete Button */}
                             {canDelete && (
                               <Button
                                 onClick={() => handleDelete(item._id, item.fileName)}

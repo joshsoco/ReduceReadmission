@@ -15,6 +15,7 @@ export const DashboardPage: React.FC = () => {
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [disease, setDisease] = useState<string>('');
   const [isSavingHistory, setIsSavingHistory] = useState(false);
+  const [originalFile, setOriginalFile] = useState<File | undefined>(); // ✅ Add state for original file
   
   // ✅ Track saved uploads to prevent duplicates
   const savedUploadsRef = useRef<Set<string>>(new Set());
@@ -29,6 +30,7 @@ export const DashboardPage: React.FC = () => {
       setResults(data.predictions);
       setUploadedFileName(fileName);
       setDisease(data.disease || '');
+      setOriginalFile(data.originalFile); // ✅ Store original file
 
       await saveToHistory({
         fileName,
@@ -172,6 +174,7 @@ export const DashboardPage: React.FC = () => {
             results={results} 
             fileName={uploadedFileName} 
             disease={disease}
+            originalFile={originalFile} // ✅ Pass original file to ResultsTable
           />
         )}
 
