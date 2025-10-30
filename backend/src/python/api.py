@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Import your existing functions
@@ -25,24 +25,56 @@ from interpretation_rules import (
     interpret_feature
 )
 
-app = FastAPI(title="Readmission Risk Analysis API")
+app = FastAPI(
+    title="Readmission Risk Analysis API",
+    description="Comprehensive hospital readmission risk prediction with clinical insights",
+    version="2.0.0"
+)
 
-# Add CORS middleware for browser access
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Store generated files temporarily with unique IDs
+# Temporary storage for generated files
 TEMP_FILES = {}
-REPORTS_DIR = "temp_reports"
-os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # -----------------------------
-# 1️⃣ Analyze and Generate Reports
+# Root Endpoint
+# -----------------------------
+@app.get("/")
+async def root():
+    """API information and available endpoints"""
+    return {
+        "status": "healthy",
+        "api_name": "Readmission Risk Analysis API",
+        "version": "2.0.0",
+        "available_diseases": list(REGISTRY.keys()),
+        "endpoints": {
+            "root": "/ (GET) - This page",
+            "analyze": "/analyze (POST) - Main analysis endpoint with comprehensive reports",
+            "upload": "/upload (POST) - Simplified upload endpoint (backward compatibility)",
+            "health": "/health (GET) - Health check",
+            "diseases": "/diseases (GET) - List supported diseases",
+            "download_pdf": "/download/pdf/{session_id} (GET) - Download PDF report",
+            "download_excel": "/download/excel/{session_id} (GET) - Download Excel report"
+        },
+        "features": [
+            "Risk prediction with SHAP analysis",
+            "Clinical recommendations",
+            "Medication protocols",
+            "Related disease predictions",
+            "Professional PDF/Excel reports"
+        ],
+        "timestamp": datetime.now().isoformat()
+    }
+
+# -----------------------------
+# Main Analysis Endpoint
 # -----------------------------
 @app.post("/analyze")
 async def analyze_file(
@@ -52,19 +84,30 @@ async def analyze_file(
     """
     Analyze patient data and return comprehensive risk analysis including:
     - Risk probability and decision
-    - Top contributing factors
+    - Patient name
+    - Top contributing factors with interpretations
     - Clinical recommendations
-    - Medication protocols
-    - Related disease predictions
     - Download links for PDF/Excel reports
     """
     try:
+        print(f"\n{'='*60}")
+        print("ANALYZE REQUEST RECEIVED")
+        print(f"{'='*60}")
+        print(f"Disease requested: {disease}")
+        print(f"File: {file.filename}")
+        print(f"Available diseases: {list(REGISTRY.keys())}")
+        
         # Validate disease
         if disease not in REGISTRY:
+            available_diseases = list(REGISTRY.keys())
+            print(f"Invalid disease: {disease}")
+            print(f"Available: {available_diseases}")
             return JSONResponse(
-                {"error": f"Disease must be one of: {list(REGISTRY.keys())}"},
+                {"error": f"Disease must be one of: {available_diseases}"},
                 status_code=400
             )
+        
+        print(f"Disease validated: {disease}")
         
         # Read uploaded file into DataFrame
         if file.filename.endswith(".csv"):
@@ -76,6 +119,8 @@ async def analyze_file(
                 {"error": "Only CSV or Excel files are supported."},
                 status_code=400
             )
+        
+        print(f"File read successfully: {len(df)} rows, {len(df.columns)} columns")
         
         if df.shape[0] == 0:
             return JSONResponse(
@@ -90,16 +135,35 @@ async def analyze_file(
         X = prepare_X(df, train_cols, cat_levels)
         proba, decision = predict(model, X, threshold)
         
+        print(f"Prediction: probability={proba:.3f}, decision={decision}, threshold={threshold}")
+        
         # Compute feature contributions
         contrib_df = compute_contributions(model, X, train_cols)
         
         # Generate unique patient ID and session ID
-        patient_id = f"{datetime.now().strftime('%Y%m%d')}-{disease.split()[0]}-{uuid.uuid4().hex[:6]}"
+        patient_id = f"{datetime.now().strftime('%Y%m%d')}-{disease.replace(' ', '')[:3]}-{uuid.uuid4().hex[:6]}"
         session_id = uuid.uuid4().hex
+        
+        print(f"Generated patient_id: {patient_id}")
+        print(f"Generated session_id: {session_id}")
+        
+        # Extract patient name from DataFrame
+        patient_name = "Unknown"
+        name_columns = ['patient_name', 'name', 'full_name', 'patientname', 'Patient_Name']
+        for col in name_columns:
+            if col in df.columns or col.lower() in [c.lower() for c in df.columns]:
+                matching_col = next((c for c in df.columns if c.lower() == col.lower()), None)
+                if matching_col and not pd.isna(df[matching_col].iloc[0]):
+                    patient_name = str(df[matching_col].iloc[0])
+                    print(f"Patient name found: {patient_name}")
+                    break
         
         # Generate PDF and Excel reports
         pdf_path = export_pdf(patient_id, disease, df, proba, decision, threshold, contrib_df)
         excel_path = export_excel(patient_id, disease, df, proba, decision, threshold, contrib_df)
+        
+        print(f"PDF generated: {pdf_path}")
+        print(f"Excel generated: {excel_path}")
         
         # Store file paths with session ID
         TEMP_FILES[session_id] = {
@@ -123,14 +187,29 @@ async def analyze_file(
             axis=1
         )
         
+        # Generate comprehensive interpretation for display
+        top_factor = contrib_df.iloc[0]
+        main_interpretation = interpret_feature(
+            disease, 
+            top_factor["Feature"], 
+            top_factor["Contribution"], 
+            top_factor["Value"]
+        )
+        
+        # Clean HTML tags from interpretation
+        import re
+        clean_interpretation = re.sub('<[^<]+?>', '', main_interpretation)
+        
         # Prepare JSON response
         result = {
             "session_id": session_id,
             "patient_id": patient_id,
+            "patient_name": patient_name,
             "disease": disease,
             "probability": round(float(proba), 3),
             "decision": "High Risk" if decision == 1 else "Low Risk",
             "threshold": threshold,
+            "interpretation": clean_interpretation,
             "summary": summary_text,
             "clinical_recommendations": clinical_text,
             "medication_recommendations": medication_text,
@@ -143,10 +222,18 @@ async def analyze_file(
             "timestamp": datetime.now().isoformat()
         }
         
+        print("\nSUCCESS - Returning response")
+        print(f"Disease in response: {result['disease']}")
+        print(f"{'='*60}\n")
+        
         return JSONResponse(result)
     
     except Exception as e:
         import traceback
+        print("\nERROR in /analyze endpoint")
+        print(f"Error: {str(e)}")
+        print(f"Traceback:\n{traceback.format_exc()}")
+        print(f"{'='*60}\n")
         return JSONResponse(
             {
                 "error": f"Analysis failed: {str(e)}",
@@ -156,7 +243,113 @@ async def analyze_file(
         )
 
 # -----------------------------
-# 2️⃣ PDF Download Endpoint
+# Simplified Upload Endpoint (Backward Compatibility)
+# -----------------------------
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Simplified endpoint for backward compatibility with main.py format.
+    Auto-detects disease from filename and returns basic prediction results.
+    
+    For full features, use /analyze endpoint instead.
+    """
+    try:
+        # Auto-detect disease from filename
+        disease = None
+        filename_lower = file.filename.lower().replace(" ", "_")
+        
+        for disease_name, config in REGISTRY.items():
+            aliases = config.get("aliases", [])
+            if any(alias in filename_lower for alias in aliases):
+                disease = disease_name
+                break
+        
+        if not disease:
+            disease_keywords = {
+                "Type 2 Diabetes": ["diabetes", "type2", "t2d"],
+                "Pneumonia": ["pneumonia", "respiratory"],
+                "Chronic Kidney Disease": ["kidney", "ckd", "renal"],
+                "COPD": ["copd", "obstructive"],
+                "Hypertension": ["hypertension", "blood_pressure", "bp"]
+            }
+            
+            for disease_name, keywords in disease_keywords.items():
+                if any(kw in filename_lower for kw in keywords):
+                    disease = disease_name
+                    break
+        
+        if not disease:
+            available = ", ".join(REGISTRY.keys())
+            return JSONResponse(
+                {
+                    "error": f"Could not detect disease type from filename '{file.filename}'. "
+                             f"Please include disease name in filename or use /analyze endpoint. "
+                             f"Available: {available}"
+                },
+                status_code=400
+            )
+        
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file.file)
+        elif file.filename.endswith((".xls", ".xlsx")):
+            df = pd.read_excel(file.file)
+        else:
+            return JSONResponse(
+                {"error": "Only CSV or Excel files are supported."},
+                status_code=400
+            )
+        
+        if df.empty:
+            return JSONResponse(
+                {"error": "The uploaded file is empty."},
+                status_code=400
+            )
+        
+        model, train_cols, cat_levels = load_model_and_metadata(disease)
+        threshold = REGISTRY[disease]["threshold"]
+        X = prepare_X(df, train_cols, cat_levels)
+        proba, decision = predict(model, X, threshold)
+        
+        def risk_band(p):
+            if p < 0.33:
+                return "Low"
+            elif p < 0.66:
+                return "Medium"
+            else:
+                return "High"
+        
+        df["Predicted_Prob"] = round(float(proba), 3)
+        df["Predicted_Class"] = int(decision)
+        df["Risk_Band"] = risk_band(proba)
+        
+        risk = df["Risk_Band"].iloc[0]
+        risk_counts = {
+            "high_risk_count": 1 if risk == "High" else 0,
+            "medium_risk_count": 1 if risk == "Medium" else 0,
+            "low_risk_count": 1 if risk == "Low" else 0
+        }
+        
+        return {
+            "disease": disease,
+            "records": df.to_dict(orient="records"),
+            "total_records": len(df),
+            **risk_counts,
+            "threshold": threshold,
+            "note": "Using simplified /upload endpoint. Use /analyze for comprehensive reports."
+        }
+    
+    except Exception as e:
+        import traceback
+        return JSONResponse(
+            {
+                "error": f"Upload failed: {str(e)}",
+                "details": traceback.format_exc()
+            },
+            status_code=500
+        )
+
+# -----------------------------
+# Download Endpoints
 # -----------------------------
 @app.get("/download/pdf/{session_id}")
 async def download_pdf(session_id: str):
@@ -164,103 +357,77 @@ async def download_pdf(session_id: str):
     if session_id not in TEMP_FILES:
         raise HTTPException(status_code=404, detail="Session not found or expired")
     
-    pdf_path = TEMP_FILES[session_id]["pdf"]
+    file_info = TEMP_FILES[session_id]
+    pdf_path = file_info["pdf"]
     
     if not os.path.exists(pdf_path):
         raise HTTPException(status_code=404, detail="PDF file not found")
     
-    patient_id = TEMP_FILES[session_id]["patient_id"]
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
-        filename=f"{patient_id}_report.pdf"
+        filename=os.path.basename(pdf_path)
     )
 
-# -----------------------------
-# 3️⃣ Excel Download Endpoint
-# -----------------------------
 @app.get("/download/excel/{session_id}")
 async def download_excel(session_id: str):
     """Download generated Excel report using session ID."""
     if session_id not in TEMP_FILES:
         raise HTTPException(status_code=404, detail="Session not found or expired")
     
-    excel_path = TEMP_FILES[session_id]["excel"]
+    file_info = TEMP_FILES[session_id]
+    excel_path = file_info["excel"]
     
     if not os.path.exists(excel_path):
         raise HTTPException(status_code=404, detail="Excel file not found")
     
-    patient_id = TEMP_FILES[session_id]["patient_id"]
     return FileResponse(
         excel_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"{patient_id}_report.xlsx"
+        filename=os.path.basename(excel_path)
     )
 
 # -----------------------------
-# 4️⃣ Health Check
+# Health Check
 # -----------------------------
 @app.get("/health")
 async def health_check():
     """Check if API is running and models are loaded."""
     return {
         "status": "healthy",
+        "api_version": "2.0.0",
         "available_diseases": list(REGISTRY.keys()),
+        "total_models": len(REGISTRY),
         "features": [
-            "Risk prediction",
-            "SHAP analysis",
+            "Risk prediction with ML models",
+            "SHAP-based feature importance",
             "Clinical recommendations",
             "Medication protocols",
             "Related disease predictions",
-            "PDF/Excel reports"
+            "Professional PDF/Excel reports"
         ],
+        "temp_files_count": len(TEMP_FILES),
         "timestamp": datetime.now().isoformat()
     }
 
 # -----------------------------
-# 5️⃣ Get Available Diseases
+# Get Available Diseases
 # -----------------------------
 @app.get("/diseases")
 async def get_diseases():
     """Get list of supported diseases and their thresholds."""
     return {
+        "total": len(REGISTRY),
         "diseases": [
             {
                 "name": disease,
                 "threshold": info["threshold"],
+                "aliases": info.get("aliases", []),
                 "description": f"30-day readmission prediction for {disease}"
             }
             for disease, info in REGISTRY.items()
         ]
     }
-
-# -----------------------------
-# 6️⃣ Cleanup old files
-# -----------------------------
-@app.on_event("startup")
-async def cleanup_old_files():
-    """Clean up temp files older than 24 hours on startup."""
-    from datetime import timedelta
-    
-    cutoff = datetime.now() - timedelta(hours=24)
-    expired_sessions = []
-    
-    for session_id, data in TEMP_FILES.items():
-        if data["timestamp"] < cutoff:
-            expired_sessions.append(session_id)
-            # Delete files
-            try:
-                if os.path.exists(data["pdf"]):
-                    os.remove(data["pdf"])
-                if os.path.exists(data["excel"]):
-                    os.remove(data["excel"])
-            except Exception as e:
-                print(f"Error cleaning up {session_id}: {e}")
-    
-    for session_id in expired_sessions:
-        del TEMP_FILES[session_id]
-    
-    print(f"✅ Cleaned up {len(expired_sessions)} expired sessions")
 
 if __name__ == "__main__":
     import uvicorn

@@ -10,8 +10,10 @@ export interface HistoryItem {
   mediumRiskCount: number;
   lowRiskCount: number;
   disease?: string;
-  createdAt: string;
-  updatedAt: string;
+  uploadId: string;
+  sessionId?: string;
+  pdfDownloadUrl?: string; 
+  excelDownloadUrl?: string;
 }
 
 export interface HistoryStats {

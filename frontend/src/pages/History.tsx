@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/Navbar';
-import { historyService, HistoryItem, HistoryStats } from '@/features/history/services/historyService';
+import { historyService, HistoryItem, HistoryStats } from '@/features/History/services/historyService';
 import { authService } from '@/features/auth/services/authService';
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import {
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { uploadService } from '@/features/upload/services/uploadService';
 
 export const HistoryPage: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
@@ -251,6 +252,41 @@ export const HistoryPage: React.FC = () => {
     },
   ];
 
+  // Add download handler functions
+  const handleDownloadPDF = async (item: HistoryItem) => {
+    if (!item.pdfDownloadUrl) {
+      alert('PDF report not available for this upload');
+      return;
+    }
+
+    try {
+      await uploadService.downloadReport(
+        item.pdfDownloadUrl,
+        `${item.fileName.replace(/\.[^/.]+$/, '')}_report.pdf`
+      );
+    } catch (error) {
+      alert('Failed to download PDF report');
+      console.error('PDF download error:', error);
+    }
+  };
+
+  const handleDownloadExcel = async (item: HistoryItem) => {
+    if (!item.excelDownloadUrl) {
+      alert('Excel report not available for this upload');
+      return;
+    }
+
+    try {
+      await uploadService.downloadReport(
+        item.excelDownloadUrl,
+        `${item.fileName.replace(/\.[^/.]+$/, '')}_report.xlsx`
+      );
+    } catch (error) {
+      alert('Failed to download Excel report');
+      console.error('Excel download error:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       <Navbar />
@@ -326,7 +362,7 @@ export const HistoryPage: React.FC = () => {
             <div className="flex items-center gap-2 md:gap-3 px-3 py-2">
               <label
                 htmlFor="diseaseFilter"
-                className="text-sm font-medium text-gray-700 whitespace-nowrap"
+                className="text-sm font-medium text-gray-700"
               >
                 Filter by Disease:
               </label>
@@ -339,12 +375,12 @@ export const HistoryPage: React.FC = () => {
                 }}
                 className="px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               >
-                <option value="all">All</option>
-                <option value="Diabetes">Diabetes</option>
+                <option value="all">All Diseases</option>
+                <option value="Type 2 Diabetes">Type 2 Diabetes</option>
                 <option value="Pneumonia">Pneumonia</option>
+                <option value="Chronic Kidney Disease">Chronic Kidney Disease</option>
+                <option value="COPD">COPD</option>
                 <option value="Hypertension">Hypertension</option>
-                <option value="CKD">Chronic Kidney Disease</option>
-                <option value="COPD">Chronic Obstructive Pulmonary Disease</option>
               </select>
             </div>
           </CardHeader>
@@ -418,22 +454,51 @@ export const HistoryPage: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-6 min-w-[120px] justify-end">
-                            <Badge variant="success" className="flex items-center gap-1 px-2 py-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Completed
-                            </Badge>
+                          <div className="flex items-center justify-between gap-5">
+                            <div className="flex items-center gap-5 text-sm">
+                              {/* Download Dropdown */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-100 transition-colors"
+                                    disabled={!item.pdfDownloadUrl && !item.excelDownloadUrl}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                  <DropdownMenuItem
+                                    onClick={() => handleDownloadPDF(item)}
+                                    className="cursor-pointer"
+                                    disabled={!item.pdfDownloadUrl}
+                                  >
+                                    <FileDown className="w-4 h-4 mr-2" />
+                                    Download PDF
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDownloadExcel(item)}
+                                    className="cursor-pointer"
+                                    disabled={!item.excelDownloadUrl}
+                                  >
+                                    <FileSpreadsheet className="w-4 h-4 mr-2" />
+                                    Download Excel
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
 
-                            {canDelete && (
-                              <Button
-                                onClick={() => handleDelete(item._id, item.fileName)}
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
+                              {canDelete && (
+                                <Button
+                                  onClick={() => handleDelete(item._id, item.fileName)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>

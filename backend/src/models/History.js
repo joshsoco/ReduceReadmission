@@ -45,12 +45,22 @@ const historySchema = new mongoose.Schema({
   },
   disease: {
     type: String,
-    enum: ['Diabetes', 'Pneumonia', 'Hypertension', 'Unknown'],
     default: 'Unknown'
+  },
+  sessionId: {
+    type: String,
+    index: true
+  },
+  pdfDownloadUrl: {
+    type: String
+  },
+  excelDownloadUrl: {
+    type: String
   },
   predictions: [{
     no: Number,
     patientId: String,
+    patientName: String,
     risk: {
       type: String,
       enum: ['High', 'Medium', 'Low']
@@ -58,6 +68,7 @@ const historySchema = new mongoose.Schema({
     probability: Number,
     riskScore: Number,
     reasons: [String],
+    interpretation: String,
     recommendation: String,
     predictedClass: Number
   }],
@@ -71,11 +82,10 @@ const historySchema = new mongoose.Schema({
     email: String,
     role: String
   },
-  // Add unique upload identifier
   uploadId: {
     type: String,
     unique: true,
-    sparse: true // Allows null values but ensures uniqueness when set
+    sparse: true
   }
 }, {
   timestamps: true,
@@ -83,13 +93,11 @@ const historySchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Compound index to prevent duplicate uploads
-historySchema.index({ userId: 1, fileName: 1, createdAt: 1 }, { unique: true });
 
-// Indexes for faster queries
 historySchema.index({ userId: 1, createdAt: -1 });
 historySchema.index({ disease: 1 });
 historySchema.index({ status: 1 });
+historySchema.index({ uploadedBy: 1 });
 
 // Virtual for upload timestamp
 historySchema.virtual('timestamp').get(function() {

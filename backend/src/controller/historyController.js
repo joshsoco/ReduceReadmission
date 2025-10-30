@@ -16,7 +16,7 @@ export const saveUploadHistory = async (req, res) => {
     const user = req.user;
     console.log('=== Save History Request ===');
     console.log('User ID:', user.id);
-    console.log('Request body:', req.body);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
     
     const {
       fileName,
@@ -26,92 +26,101 @@ export const saveUploadHistory = async (req, res) => {
       mediumRiskCount,
       lowRiskCount,
       disease,
-      predictions
+      predictions,
+      uploadId,
+      sessionId,           // ✅ Extract sessionId
+      pdfDownloadUrl,      // ✅ Extract pdfDownloadUrl
+      excelDownloadUrl     // ✅ Extract excelDownloadUrl
     } = req.body;
 
-    const now = new Date();
-    
-    const contentHash = `${user.id}_${fileName}_${recordCount}_${highRiskCount}_${mediumRiskCount}_${lowRiskCount}`;
-    
-    // ✅ Check if this exact upload already exists (within last 30 seconds)
-    const thirtySecondsAgo = new Date(now.getTime() - 30000);
-    const existingUpload = await History.findOne({
-      userId: user.id,
-      fileName: fileName,
-      recordCount: recordCount,
-      highRiskCount: highRiskCount,
-      mediumRiskCount: mediumRiskCount,
-      lowRiskCount: lowRiskCount,
-      disease: disease || 'Unknown',
-      createdAt: { $gte: thirtySecondsAgo }
-    });
-
-    if (existingUpload) {
-      console.log('⚠️ Duplicate upload detected within 30 seconds, skipping save');
-      return res.status(200).json({
-        success: true,
-        message: 'Upload already exists',
-        data: {
-          id: existingUpload._id,
-          fileName: existingUpload.fileName,
-          timestamp: existingUpload.createdAt
-        },
-        isDuplicate: true
+    // ✅ Validate required fields
+    if (!fileName || recordCount === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: fileName and recordCount are required'
       });
     }
 
+    // ✅ Check for duplicate uploads using uploadId
+    if (uploadId) {
+      const existingUpload = await History.findOne({ uploadId });
+      if (existingUpload) {
+        console.log('⏭️ Duplicate upload detected, skipping save');
+        return res.status(200).json({
+          success: true,
+          message: 'Upload already recorded',
+          data: existingUpload
+        });
+      }
+    }
+
+    const now = new Date();
+    const uploadDate = now.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+    const uploadTime = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const normalizedDisease = disease || 'Unknown';
+    
+    console.log('📊 Saving history with URLs:');
+    console.log('  - sessionId:', sessionId);
+    console.log('  - pdfDownloadUrl:', pdfDownloadUrl);
+    console.log('  - excelDownloadUrl:', excelDownloadUrl);
+
     const historyEntry = new History({
       userId: user.id,
-      fileName: fileName,
+      fileName,
       fileSize: fileSize || 0,
-      uploadDate: now.toLocaleDateString(),
-      uploadTime: now.toLocaleTimeString(),
-      recordCount: recordCount || 0,
+      uploadDate,
+      uploadTime,
+      recordCount,
       highRiskCount: highRiskCount || 0,
       mediumRiskCount: mediumRiskCount || 0,
       lowRiskCount: lowRiskCount || 0,
-      disease: disease || 'Unknown',
+      disease: normalizedDisease,
       predictions: predictions || [],
       status: 'completed',
       uploadedBy: {
-        name: user.name || user.email,
+        name: user.name,
         email: user.email,
         role: user.role
       },
-      uploadId: contentHash
+      uploadId: uploadId || `${user.id}-${Date.now()}`,
+      sessionId: sessionId,                // ✅ Save sessionId
+      pdfDownloadUrl: pdfDownloadUrl,      // ✅ Save pdfDownloadUrl
+      excelDownloadUrl: excelDownloadUrl   // ✅ Save excelDownloadUrl
     });
 
     await historyEntry.save();
 
-    console.log('✅ History saved successfully:', historyEntry._id);
+    console.log('✅ History saved successfully with download URLs');
+    console.log('Saved entry ID:', historyEntry._id);
 
     res.status(201).json({
       success: true,
       message: 'Upload history saved successfully',
-      data: {
-        id: historyEntry._id,
-        fileName: historyEntry.fileName,
-        timestamp: historyEntry.createdAt
-      },
-      isDuplicate: false
+      data: historyEntry
     });
 
   } catch (error) {
-    console.error('❌ Save history error:', error);
+    console.error('❌ Error saving history:', error);
     
-    // Handle duplicate key error
     if (error.code === 11000) {
-      return res.status(200).json({
-        success: true,
-        message: 'Upload already exists',
-        isDuplicate: true
+      return res.status(409).json({
+        success: false,
+        message: 'Duplicate upload detected'
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Server error saving upload history',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Failed to save upload history',
+      error: error.message
     });
   }
 };

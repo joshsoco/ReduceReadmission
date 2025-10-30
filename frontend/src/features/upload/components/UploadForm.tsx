@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Database,
   Loader2,
+  HelpCircle,
   FileText,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,15 +49,24 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
     reset,
   } = useUploadViewModel();
 
+  // ✅ Track if callback has been called
+  const hasCalledCallback = useRef(false);
+
   useEffect(() => {
-    if (status === 'success' && uploadResponse?.data && onUploadSuccess) {
+    // ✅ Only call once when status becomes success
+    if (status === 'success' && uploadResponse?.data && onUploadSuccess && !hasCalledCallback.current) {
+      hasCalledCallback.current = true;
       onUploadSuccess(uploadResponse.data, file?.name || 'upload');
+    }
+    
+    // ✅ Reset flag when status changes away from success
+    if (status !== 'success') {
+      hasCalledCallback.current = false;
     }
   }, [status, uploadResponse, file, onUploadSuccess]);
 
   const isProcessing = status === 'validating' || status === 'reading' || status === 'uploading';
 
-  // Get file type icon
   const getFileIcon = () => {
     if (!file) return <Upload className="w-16 h-16 text-gray-400" />;
     const fileName = file.name.toLowerCase();
@@ -215,8 +225,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                   <div className="mt-2 text-sm">
                     <p>File: {uploadResponse.data.fileName}</p>
                     <p>Processed {uploadResponse.data.rowCount} records</p>
-                    {/* TODO: Show prediction summary when ML backend is ready */}
-                    {/* <p>High Risk: {uploadResponse.data.predictions?.filter(p => p.riskLevel === 'High').length}</p> */}
                   </div>
                 )}
               </AlertDescription>
@@ -224,7 +232,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
           )}
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Button
               onClick={openFilePicker}
               disabled={isProcessing}
@@ -234,17 +242,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
               <Upload className="w-4 h-4" />
               Upload File
             </Button>
-
-            <Button
-              onClick={useSampleData}
-              disabled={isProcessing}
-              className="flex items-center gap-2"
-              variant="outline"
-            >
-              <Database className="w-4 h-4" />
-              Use Sample Data
-            </Button>
-
             <Button
               onClick={() => navigate('/manual-entry')}
               className="flex items-center gap-2"
@@ -263,8 +260,8 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
               size="sm"
               className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
             >
-              <Download className="w-4 h-4" />
-              Download Template
+            <HelpCircle className="w-4 h-4" />
+            Help
             </Button>
 
             {(file || status === 'success') && (
@@ -291,10 +288,6 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
                 <Upload className="w-5 h-5" />
                 Process and Analyze Data with AI
               </Button>
-              <p className="text-xs text-center text-gray-500 mt-2">
-                {/* TODO: Remove this note when ML model is ready */}
-                Note: ML prediction model is currently in development
-              </p>
             </div>
           )}
         </CardContent>

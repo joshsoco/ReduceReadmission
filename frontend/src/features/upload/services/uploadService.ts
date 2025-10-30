@@ -1,8 +1,14 @@
 import * as XLSX from 'xlsx';
-import { FileModel, ExcelFileData } from '../models/fileModel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const PYTHON_ML_API = import.meta.env.VITE_PYTHON_ML_API || 'http://localhost:8000';
+
+interface ExcelFileData {
+  file: File;
+  data: any[];
+  headers: string[];
+  rowCount: number;
+}
 
 interface UploadResponse {
   success: boolean;
@@ -10,9 +16,12 @@ interface UploadResponse {
   data?: {
     fileName: string;
     rowCount: number;
-    predictions?: any[];
-    uploadId?: string;
+    predictions: any[];
     disease?: string;
+    fileSize?: number;
+    sessionId?: string;
+    pdfDownloadUrl?: string;
+    excelDownloadUrl?: string;
   };
   error?: string;
 }
@@ -20,7 +29,6 @@ interface UploadResponse {
 interface ApiStatus {
   isConnected: boolean;
   message: string;
-  timestamp: number;
 }
 
 class UploadService {
@@ -81,203 +89,113 @@ class UploadService {
 
   async uploadFile(excelData: ExcelFileData): Promise<UploadResponse> {
     try {
-      // Create FormData to send file to Python ML API
       const formData = new FormData();
       formData.append('file', excelData.file);
+      
+      // Detect disease from filename
+      const fileName = excelData.file.name.toLowerCase();
+      let disease = 'Type 2 Diabetes'; // default
+      
+      if (fileName.includes('diabetes')) disease = 'Type 2 Diabetes';
+      else if (fileName.includes('pneumonia')) disease = 'Pneumonia';
+      else if (fileName.includes('kidney') || fileName.includes('ckd')) disease = 'Chronic Kidney Disease';
+      else if (fileName.includes('copd')) disease = 'COPD';
+      else if (fileName.includes('hypertension')) disease = 'Hypertension';
+      
+      formData.append('disease', disease);
 
-      // Call Python ML API for predictions
-      const mlResponse = await fetch(`${PYTHON_ML_API}/upload?format=json`, {
+      // ✅ Use /analyze endpoint that generates PDF & Excel via test.py
+      const mlResponse = await fetch(`${PYTHON_ML_API}/analyze`, {
         method: 'POST',
         body: formData,
       });
 
       if (!mlResponse.ok) {
         const errorData = await mlResponse.json();
-        
-        if (mlResponse.status === 400) {
-          throw new Error(errorData.detail || 'Invalid file format or data');
-        }
-        
-        throw new Error(errorData.detail || 'ML API prediction failed');
+        throw new Error(errorData.error || 'ML API prediction failed');
       }
 
       const mlResult = await mlResponse.json();
 
-      if (!mlResult.disease || !mlResult.records) {
-        throw new Error('Invalid response from prediction service');
-      }
-
-      // Transform ML API response to frontend format
-      const predictions = mlResult.records.map((record: any, index: number) => {
-        const riskLevel = record.Risk_Band;
-        const probability = record.Predicted_Prob;
-
-        const factors = this.generateContributingFactors(record, riskLevel);
-
-        return {
-          no: index + 1,
-          patientId: record.patient_id || `P-${(index + 1).toString().padStart(5, '0')}`,
-          risk: riskLevel,
-          probability: probability,
-          reasons: factors,
-          riskScore: probability,
-          predictedClass: record.Predicted_Class,
-          recommendation: this.generateRecommendation(riskLevel, probability),
-        };
-      });
-
+      // ✅ Return data with download links, patient name, and interpretation
       return {
         success: true,
-        message: `Successfully analyzed ${predictions.length} patient records for ${mlResult.disease} readmission risk`,
+        message: `Successfully analyzed patient for ${mlResult.disease}`,
         data: {
           fileName: excelData.file.name,
-          rowCount: excelData.rowCount || 0,
-          predictions: predictions,
+          rowCount: 1,
+          predictions: [{
+            no: 1,
+            patientId: mlResult.patient_id,
+            patientName: mlResult.patient_name || 'Unknown',  // ✅ Include patient name
+            risk: mlResult.decision === 'High Risk' ? 'High' : 'Low',
+            probability: mlResult.probability,
+            reasons: mlResult.top_features.slice(0, 5).map((f: any) => f.Feature),
+            interpretation: mlResult.interpretation,  // ✅ Include interpretation
+            riskScore: mlResult.probability,
+          }],
           disease: mlResult.disease,
-          fileSize: excelData.file.size
+          fileSize: excelData.file.size,
+          // ✅ Include session ID and download URLs
+          sessionId: mlResult.session_id,
+          pdfDownloadUrl: `${PYTHON_ML_API}${mlResult.download_links.pdf}`,
+          excelDownloadUrl: `${PYTHON_ML_API}${mlResult.download_links.excel}`,
         },
       };
     } catch (error) {
       console.error('Upload error:', error);
-      const errorMessage = (error as Error).message;
-      
       return {
         success: false,
         message: 'Failed to generate predictions',
-        error: errorMessage.includes('non-medical') || errorMessage.includes('not appear to contain')
-          ? errorMessage
-          : 'Failed to process file. Please ensure it contains valid hospital readmission patient data.',
+        error: (error as Error).message,
       };
     }
   }
 
-  private generateContributingFactors(record: any, riskLevel: string): string[] {
-    const factors: string[] = [];
-
-    // Add factors based on available data
-    if (record.age > 65) factors.push('Age over 65');
-    if (record.time_in_hospital > 7) factors.push('Extended hospital stay');
-    if (record.num_procedures > 3) factors.push('Multiple procedures');
-    if (record.num_medications > 10) factors.push('High medication count');
-    if (record.number_diagnoses > 5) factors.push('Multiple diagnoses');
-    if (record.number_emergency > 0) factors.push('Previous emergency visits');
-    if (record.number_inpatient > 0) factors.push('Previous inpatient admissions');
-
-    // Add risk-specific factors
-    if (riskLevel === 'High') {
-      if (factors.length < 3) {
-        factors.push('High predicted risk score', 'Requires intensive follow-up');
-      }
-    } else if (riskLevel === 'Medium') {
-      if (factors.length < 2) {
-        factors.push('Moderate risk factors present');
-      }
+  // ✅ Add download helper methods
+  async downloadReport(url: string, filename: string): Promise<void> {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Download error:', error);
+      throw error;
     }
-
-    return factors.length > 0 ? factors : ['Standard risk profile'];
-  }
-
-  private generateRecommendation(riskLevel: string, probability: number): string {
-    if (riskLevel === 'High' || probability > 0.66) {
-      return 'High risk of readmission. Recommend intensive follow-up care, home health services, and close monitoring. Schedule follow-up appointment within 7 days of discharge.';
-    } else if (riskLevel === 'Medium' || probability > 0.33) {
-      return 'Moderate risk of readmission. Recommend standard follow-up care and patient education. Schedule follow-up appointment within 14 days of discharge.';
-    } else {
-      return 'Low risk of readmission. Standard discharge procedures recommended. Schedule routine follow-up appointment within 30 days.';
-    }
-  }
-
-  async uploadSampleData(): Promise<UploadResponse> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const sampleData = FileModel.getSampleData();
-        resolve({
-          success: true,
-          message: 'Sample data loaded successfully',
-          data: {
-            fileName: 'sample_hospital_data.xlsx',
-            rowCount: sampleData.length,
-            predictions: sampleData.map((patient) => ({
-              ...patient,
-              prediction: patient.risk_score > 0.7 ? 'High Risk' : 'Low Risk',
-            })),
-          },
-        });
-      }, 1000);
-    });
   }
 
   async checkApiStatus(): Promise<ApiStatus> {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${PYTHON_ML_API}/health`, {
+        method: 'GET',
+      });
 
-      // Check both backend and ML API
-      const [backendResponse, mlResponse] = await Promise.allSettled([
-        fetch(`${API_BASE_URL}/health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-        }),
-        fetch(`${PYTHON_ML_API}/`, {
-          method: 'GET',
-          signal: controller.signal,
-        }),
-      ]);
-
-      clearTimeout(timeoutId);
-
-      const backendOk = backendResponse.status === 'fulfilled' && backendResponse.value.ok;
-      const mlOk = mlResponse.status === 'fulfilled' && mlResponse.value.ok;
-
-      if (backendOk && mlOk) {
+      if (response.ok) {
         return {
           isConnected: true,
-          message: 'All APIs Connected',
-          timestamp: Date.now(),
-        };
-      } else if (backendOk) {
-        return {
-          isConnected: false,
-          message: 'ML API Disconnected',
-          timestamp: Date.now(),
-        };
-      } else if (mlOk) {
-        return {
-          isConnected: false,
-          message: 'Backend Disconnected',
-          timestamp: Date.now(),
+          message: 'ML API Connected',
         };
       } else {
         return {
           isConnected: false,
-          message: 'All APIs Disconnected',
-          timestamp: Date.now(),
+          message: 'ML API Error',
         };
       }
     } catch (error) {
       return {
         isConnected: false,
-        message: 'API Connection Error',
-        timestamp: Date.now(),
+        message: 'ML API Disconnected',
       };
     }
-  }
-
-  async downloadPDFReport(file: File): Promise<Blob> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(`${PYTHON_ML_API}/upload?format=pdf`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to generate PDF report');
-    }
-
-    return await response.blob();
   }
 }
 

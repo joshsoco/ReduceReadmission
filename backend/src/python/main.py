@@ -1,13 +1,8 @@
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 import pandas as pd
 import joblib
 import io
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.backends.backend_pdf import PdfPages
-from datetime import datetime
 import matplotlib
 from pathlib import Path
 import os
@@ -308,24 +303,15 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
         df["Predicted_Class"] = preds
         df["Risk_Band"] = [risk_band(p) for p in probs]
         
-        if format == "json":
-            return {
-                "disease": disease,
-                "records": df.to_dict(orient="records"),
-                "total_records": len(df),
-                "high_risk_count": len([r for r in df["Risk_Band"] if r == "High"]),
-                "medium_risk_count": len([r for r in df["Risk_Band"] if r == "Medium"]),
-                "low_risk_count": len([r for r in df["Risk_Band"] if r == "Low"]),
-                "threshold": threshold
-            }
-        
-        elif format == "pdf":
-            buf = generate_pdf_report(df, disease, threshold)
-            return StreamingResponse(
-                buf,
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename={disease.replace(' ', '_')}_report.pdf"}
-            )
+        return {
+            "disease": disease,
+            "records": df.to_dict(orient="records"),
+            "total_records": len(df),
+            "high_risk_count": len([r for r in df["Risk_Band"] if r == "High"]),
+            "medium_risk_count": len([r for r in df["Risk_Band"] if r == "Medium"]),
+            "low_risk_count": len([r for r in df["Risk_Band"] if r == "Low"]),
+            "threshold": threshold
+        }
     
     except HTTPException:
         raise
@@ -334,76 +320,3 @@ async def upload_file(file: UploadFile = File(...), format: str = Query("json"))
             status_code=500,
             detail=f"An unexpected error occurred: {str(e)}"
         )
-
-# PDF Generation Functions
-def generate_pdf_report(df: pd.DataFrame, disease: str, threshold: float) -> io.BytesIO:
-    """Generate PDF report with results"""
-    buf = io.BytesIO()
-    
-    with PdfPages(buf) as pdf:
-        fig = plt.figure(figsize=(8.5, 11))
-        plt.axis("off")
-        plt.text(0.5, 0.7, f"{disease} Readmission Risk Report", 
-                 ha="center", fontsize=24, weight="bold")
-        plt.text(0.5, 0.6, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
-                 ha="center", fontsize=12)
-        plt.text(0.5, 0.5, f"Total Patients: {len(df)}", ha="center", fontsize=14)
-        plt.text(0.5, 0.45, f"Threshold: {threshold:.2f}", ha="center", fontsize=12)
-        pdf.savefig()
-        plt.close()
-        
-        fig, ax = plt.subplots(figsize=(8.5, 11))
-        ax.axis("off")
-        
-        high_count = len(df[df["Risk_Band"] == "High"])
-        medium_count = len(df[df["Risk_Band"] == "Medium"])
-        low_count = len(df[df["Risk_Band"] == "Low"])
-        
-        summary_data = [
-            ["Risk Level", "Count", "Percentage"],
-            ["High", high_count, f"{high_count/len(df)*100:.1f}%"],
-            ["Medium", medium_count, f"{medium_count/len(df)*100:.1f}%"],
-            ["Low", low_count, f"{low_count/len(df)*100:.1f}%"],
-        ]
-        
-        table = ax.table(cellText=summary_data, loc="center", cellLoc="center")
-        table.auto_set_font_size(False)
-        table.set_fontsize(12)
-        table.scale(1, 2)
-        
-        for i in range(1, 4):
-            if summary_data[i][0] == "High":
-                table[(i, 0)].set_facecolor('#ffcccc')
-            elif summary_data[i][0] == "Medium":
-                table[(i, 0)].set_facecolor('#fff4cc')
-            else:
-                table[(i, 0)].set_facecolor('#ccffcc')
-        
-        pdf.savefig()
-        plt.close()
-        
-        fig, ax = plt.subplots(figsize=(8.5, 6))
-        risk_counts = df["Risk_Band"].value_counts()
-        colors_map = {"High": "#ef4444", "Medium": "#f59e0b", "Low": "#10b981"}
-        
-        bars = ax.bar(
-            risk_counts.index, 
-            risk_counts.values, 
-            color=[colors_map.get(x, '#cccccc') for x in risk_counts.index]
-        )
-        
-        ax.set_title(f"{disease} - Risk Distribution", fontsize=16, weight="bold")
-        ax.set_xlabel("Risk Level", fontsize=12)
-        ax.set_ylabel("Number of Patients", fontsize=12)
-        
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                   f'{int(height)}',
-                   ha='center', va='bottom', fontsize=10)
-        
-        pdf.savefig()
-        plt.close()
-    
-    buf.seek(0)
-    return buf

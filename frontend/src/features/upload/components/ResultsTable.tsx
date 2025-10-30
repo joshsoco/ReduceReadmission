@@ -3,16 +3,16 @@ import { Download, FileDown, Brain } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { uploadService } from '@/features/upload/services/uploadService';
 
 export interface PredictionResult {
   no: number;
   patientId?: string;
+  patientName?: string; // ✅ Add patient name
   risk: 'High' | 'Medium' | 'Low';
   probability: number;
   reasons: string[];
+  interpretation?: string; // ✅ Add interpretation
   riskScore?: number;
   recommendation?: string;
   predictedClass?: number;
@@ -22,97 +22,61 @@ interface ResultsTableProps {
   results: PredictionResult[];
   fileName?: string;
   disease?: string;
+  sessionId?: string;
+  pdfDownloadUrl?: string;
+  excelDownloadUrl?: string;
 }
 
-export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 'predictions', disease }) => {
+export const ResultsTable: React.FC<ResultsTableProps> = ({ 
+  results, 
+  fileName = 'predictions', 
+  disease,
+  sessionId,
+  pdfDownloadUrl,
+  excelDownloadUrl
+}) => {
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case 'High':
-        return 'destructive';
-      case 'Medium':
-        return 'secondary';
-      case 'Low':
-        return 'success';
-      default:
-        return 'secondary';
+      case 'High': return 'destructive';
+      case 'Medium': return 'secondary';
+      case 'Low': return 'success';
+      default: return 'secondary';
     }
   };
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-
-    doc.setFontSize(18);
-    doc.text('Hospital Readmission Prediction Results', 14, 20);
-
-    doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
-    doc.text(`Total Predictions: ${results.length}`, 14, 34);
-    if (disease) {
-      doc.text(`Disease Type: ${disease}`, 14, 40);
+  const downloadPDF = async () => {
+    if (!pdfDownloadUrl) {
+      alert('PDF report not available');
+      return;
     }
 
-    const tableData = results.map(result => [
-      result.no,
-      result.patientId || `P-${result.no.toString().padStart(5, '0')}`,
-      result.risk,
-      `${(result.probability * 100).toFixed(1)}%`,
-      result.riskScore?.toFixed(3) || 'N/A',
-      result.reasons.join('; ')
-    ]);
-
-    autoTable(doc, {
-      head: [['No.', 'Patient ID', 'Risk', 'Probability', 'Score', 'Factors']],
-      body: tableData,
-      startY: disease ? 46 : 40,
-      theme: 'grid',
-      headStyles: { fillColor: [59, 130, 246] },
-      styles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: {
-        0: { cellWidth: 15 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 'auto' }
-      }
-    });
-
-    doc.save(`${fileName}_ML_predictions.pdf`);
+    try {
+      await uploadService.downloadReport(
+        pdfDownloadUrl, 
+        `${fileName.replace(/\.[^/.]+$/, '')}_report.pdf`
+      );
+    } catch (error) {
+      alert('Failed to download PDF report');
+      console.error('PDF download error:', error);
+    }
   };
 
-  const exportToExcel = () => {
-    const excelData = results.map(result => ({
-      'No.': result.no,
-      'Patient ID': result.patientId || `P-${result.no.toString().padStart(5, '0')}`,
-      'Risk Level': result.risk,
-      'Probability': `${(result.probability * 100).toFixed(1)}%`,
-      'Risk Score': result.riskScore?.toFixed(3) || 'N/A',
-      'Predicted Class': result.predictedClass || 'N/A',
-      'Contributing Factors': result.reasons.join(', '),
-      'Recommendation': result.recommendation || ''
-    }));
+  const downloadExcel = async () => {
+    if (!excelDownloadUrl) {
+      alert('Excel report not available');
+      return;
+    }
 
-    const ws = XLSX.utils.json_to_sheet(excelData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'ML Predictions');
-
-    ws['!cols'] = [
-      { wch: 8 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 50 },
-      { wch: 60 }
-    ];
-
-    XLSX.writeFile(wb, `${fileName}_ML_predictions.xlsx`);
+    try {
+      await uploadService.downloadReport(
+        excelDownloadUrl,
+        `${fileName.replace(/\.[^/.]+$/, '')}_report.xlsx`
+      );
+    } catch (error) {
+      alert('Failed to download Excel report');
+      console.error('Excel download error:', error);
+    }
   };
-
-  if (results.length === 0) {
-    return null;
-  }
 
   const highRisk = results.filter(r => r.risk === 'High').length;
   const mediumRisk = results.filter(r => r.risk === 'Medium').length;
@@ -138,22 +102,25 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
           </div>
           <div className="flex gap-2">
             <Button
-              onClick={exportToPDF}
+              onClick={downloadPDF}
               variant="outline"
               size="sm"
               className="flex items-center gap-2"
+              disabled={!pdfDownloadUrl}
             >
               <FileDown className="w-4 h-4" />
-              Export PDF
+              Download PDF Report
             </Button>
+            
             <Button
-              onClick={exportToExcel}
+              onClick={downloadExcel}
               variant="outline"
               size="sm"
               className="flex items-center gap-2"
+              disabled={!excelDownloadUrl}
             >
               <Download className="w-4 h-4" />
-              Export Excel
+              Download Excel Report
             </Button>
           </div>
         </div>
@@ -185,10 +152,10 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
               <tr className="bg-gray-50 border-b-2 border-gray-200">
                 <th className="text-left p-3 font-semibold text-gray-700">No.</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Patient ID</th>
+                <th className="text-left p-3 font-semibold text-gray-700">Patient Name</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Risk Level</th>
                 <th className="text-left p-3 font-semibold text-gray-700">Probability</th>
-                <th className="text-left p-3 font-semibold text-gray-700">Score</th>
-                <th className="text-left p-3 font-semibold text-gray-700">Contributing Factors</th>
+                <th className="text-left p-3 font-semibold text-gray-700">Interpretation</th>
               </tr>
             </thead>
             <tbody>
@@ -198,6 +165,9 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                   <td className="p-3 text-gray-900 font-medium">
                     {result.patientId || `P-${result.no.toString().padStart(5, '0')}`}
                   </td>
+                  <td className="p-3 text-gray-900">
+                    {result.patientName || 'N/A'}
+                  </td>
                   <td className="p-3">
                     <Badge variant={getRiskColor(result.risk) as any}>
                       {result.risk}
@@ -206,11 +176,8 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ results, fileName = 
                   <td className="p-3 text-gray-900">
                     {(result.probability * 100).toFixed(1)}%
                   </td>
-                  <td className="p-3 text-gray-900">
-                    {result.riskScore?.toFixed(3) || 'N/A'}
-                  </td>
-                  <td className="p-3 text-sm text-gray-600">
-                    {result.reasons.join(', ')}
+                  <td className="p-3 text-sm text-gray-600 max-w-md">
+                    {result.interpretation || result.reasons.join(', ')}
                   </td>
                 </tr>
               ))}

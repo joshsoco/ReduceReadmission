@@ -63,7 +63,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 
-uvicorn app:app --reload --port 8000
+uvicorn api:app --reload --port 8000
 
 ```
 Runs on `http://localhost:8000`
