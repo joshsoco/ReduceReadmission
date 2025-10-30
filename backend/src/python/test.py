@@ -138,147 +138,424 @@ def export_excel(patient_id, disease, patient_df, proba, decision, threshold, co
 
 def export_pdf(patient_id, disease, patient_df, proba, decision, threshold, contrib_df):
     """
-    Generate a patient PDF report (formatted version).
-    Keeps original visual layout and wraps long text correctly.
+    Generate a professional 3-page patient PDF report.
+    Page 1: Patient Overview & Clinical Management
+    Page 2: Medication Recommendations
+    Page 3: Disease Progression & Related Conditions
     """
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
     from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, LongTable
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, 
+        PageBreak, Frame, PageTemplate
     )
-    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
     from datetime import datetime
     import numpy as np
     import os
+    
+    from interpretation_rules import (
+        interpret_feature,
+        generate_summary,
+        generate_medication_recommendations,
+        generate_related_disease_predictions
+    )
 
     path = os.path.join(OUT_DIR, f"{patient_id}_{disease.replace(' ', '_')}_report.pdf")
+    
+    # Create document with custom page template
     doc = SimpleDocTemplate(
         path,
         pagesize=letter,
-        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36,
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch,
     )
+    
+    # Styles
     styles = getSampleStyleSheet()
-
-    # Smaller text for dense tables
-    wrap_style = ParagraphStyle(
-        name="WrapSmall", fontName="Helvetica", fontSize=8, leading=10
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=6,
+        alignment=TA_LEFT
     )
-
-    elems = []
-
-    # -------------------------
-    # Header section
-    # -------------------------
-    elems.append(Paragraph("Patient Risk Report", styles["Title"]))
-    elems.append(Spacer(1, 8))
-    elems.append(Paragraph(f"Patient ID: {patient_id}", styles["Normal"]))
-    elems.append(Paragraph(f"Disease: {disease}", styles["Normal"]))
-    elems.append(Paragraph(f"Generated: {datetime.now().isoformat(timespec='minutes')}", styles["Normal"]))
-    elems.append(Spacer(1, 10))
-
-    # Risk summary
-    risk_text = f"Predicted 30-day Readmission Risk: <b>{proba:.2f}</b> (Threshold {threshold:.2f}) → <b>{'Flagged High Risk' if decision==1 else 'Not Flagged'}</b>"
-    elems.append(Paragraph(risk_text, styles["Heading2"]))
-    elems.append(Spacer(1, 6))
-
-    # Optional: index admission section (only if those columns exist)
-    index_fields = [
-        ("length_of_stay", "Index admission (LOS)", lambda v: f"{int(v)} days"),
-        ("discharge_destination", "Discharge destination", str),
-        ("prior_admissions_90d", "Prior admissions (90d)", lambda v: str(int(v))),
-        ("comorbidities_count", "Comorbidities count", lambda v: str(int(v))),
-        ("followup_scheduled", "Follow-up scheduled", lambda v: "Yes" if int(v) == 1 else "No"),
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Normal'],
+        fontSize=16,
+        textColor=colors.HexColor('#34495e'),
+        spaceAfter=12,
+        fontName='Helvetica-Bold'
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=13,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=8,
+        spaceBefore=12,
+        fontName='Helvetica-Bold',
+        borderWidth=0,
+        borderColor=colors.HexColor('#3498db'),
+        borderPadding=0,
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=8,
+        alignment=TA_LEFT
+    )
+    
+    small_style = ParagraphStyle(
+        'SmallText',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor('#2c3e50')
+    )
+    
+    # Helper function to safely get patient data with N/A fallback
+    def get_patient_value(column, default="N/A", formatter=None):
+        try:
+            if column in patient_df.columns:
+                val = patient_df[column].iloc[0]
+                if pd.isna(val) or val == "" or val is None:
+                    return default
+                if formatter:
+                    return formatter(val)
+                return str(val)
+            return default
+        except Exception:
+            return default
+    
+    # Extract patient demographics
+    patient_name = get_patient_value('patient_name', 'N/A', lambda x: str(x).upper())
+    patient_age = get_patient_value('age', 'N/A', lambda x: f"{int(x)} years")
+    patient_sex = get_patient_value('sex', 'N/A', lambda x: str(x).title())
+    
+    # Story for PDF content
+    story = []
+    
+    # ===========================================
+    # PAGE 1: PATIENT OVERVIEW & CLINICAL MANAGEMENT
+    # ===========================================
+    
+    # Header
+    story.append(Paragraph("City General Hospital", title_style))
+    story.append(Paragraph("30-Day Readmission Risk Assessment", subtitle_style))
+    story.append(Spacer(1, 12))
+    
+    # Patient Info Box
+    patient_info_data = [
+        ["Patient ID:", patient_id, "Generated:", datetime.now().strftime("%B %d, %Y %H:%M")],
+        ["Patient Name:", patient_name, "Age:", patient_age],
+        ["Sex:", patient_sex, "Disease:", disease]
     ]
-    idx_data = []
-    for col, label, fmt in index_fields:
-        if col in patient_df.columns:
-            try:
-                idx_data.append([label, fmt(patient_df[col].iloc[0])])
-            except Exception:
-                idx_data.append([label, "N/A"])
-    if idx_data:
-        t1 = Table(idx_data, colWidths=[220, 300])
-        t1.setStyle(TableStyle([
-            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-            ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
-        ]))
-        elems.append(t1)
-        elems.append(Spacer(1, 12))
-
-    # -------------------------
-    # Top contributing factors
-    # -------------------------
-    elems.append(Paragraph("Top contributing factors (SHAP)", styles["Heading2"]))
-
-    # Format contributions
+    
+    patient_info_table = Table(patient_info_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    patient_info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ecf0f1')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.HexColor('#3498db')),
+    ]))
+    story.append(patient_info_table)
+    story.append(Spacer(1, 15))
+    
+    # Risk Banner - Thinner with all white text
+    risk_color = colors.HexColor('#e74c3c') if decision == 1 else colors.HexColor('#27ae60')
+    risk_text = "HIGH RISK" if decision == 1 else "LOW RISK"
+    
+    risk_banner_text = (f"<para align=center>"
+                       f"<font size=10 color='white'>30-Day Readmission Risk: </font>"
+                       f"<font size=18 color='white'><b>{proba:.1%}</b></font>"
+                       f"<font size=10 color='white'> | Classification: <b>{risk_text}</b> (Threshold: {threshold:.0%})</font>"
+                       f"</para>")
+    
+    risk_table = Table([[Paragraph(risk_banner_text, body_style)]], colWidths=[7*inch])
+    risk_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), risk_color),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(risk_table)
+    story.append(Spacer(1, 15))
+    
+    # Index Admission Summary
+    story.append(Paragraph("Index Admission Summary", heading_style))
+    story.append(Spacer(1, 6))
+    
+    admission_data = [
+        ["Length of Stay:", get_patient_value('length_of_stay', 'N/A', lambda x: f"{int(x)} days"),
+         "Discharge Destination:", get_patient_value('discharge_destination', 'N/A', str)],
+        ["Prior Admissions (90d):", get_patient_value('prior_admissions_90d', 'N/A', int),
+         "Comorbidities Count:", get_patient_value('comorbidities_count', 'N/A', int)],
+        ["Follow-up Scheduled:", get_patient_value('followup_scheduled', 'N/A', lambda x: "Yes" if int(x) == 1 else "No"),
+         "Admission Type:", get_patient_value('admission_type', 'N/A', str)],
+    ]
+    
+    admission_table = Table(admission_data, colWidths=[1.8*inch, 1.7*inch, 1.8*inch, 1.7*inch])
+    admission_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#ecf0f1')),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(admission_table)
+    story.append(Spacer(1, 15))
+    
+    # Top Contributing Factors
+    story.append(Paragraph("Top Contributing Risk Factors (SHAP Analysis)", heading_style))
+    story.append(Spacer(1, 6))
+    
+    # Format contribution data
     def fmt_value(v):
         if isinstance(v, (int, float, np.number)):
             return f"{v:.2f}"
         try:
-            f = float(v)
-            return f"{f:.2f}"
-        except Exception:
+            return f"{float(v):.2f}"
+        except:
             return str(v)
-
-    top = contrib_df.copy()
-    top["Value"] = top["Value"].apply(fmt_value)
-    top["Contribution"] = top["Contribution"].astype(float).round(3)
-    top["Direction"] = top["Contribution"].apply(lambda x: "↑ Higher risk" if x > 0 else "↓ Lower risk")
-    top["Interpretation"] = top.apply(
-        lambda row: interpret_feature(
-            disease,
-            row["Feature"],
-            row["Contribution"],
-            row["Value"]
-        ),
-        axis=1
-    )
-
-    # Display top 8 only
-    top = top.head(8)
-
-    table_data = [["Feature", "Value", "Contribution", "Direction", "Interpretation"]]
-    for _, row in top.iterrows():
-        contrib_str = f"<font color='{'red' if row['Contribution'] > 0 else 'green'}'>{row['Contribution']:+.3f}</font>"
-        dir_str = f"<font color='{'red' if 'Higher' in row['Direction'] else 'green'}'>{row['Direction']}</font>"
-        table_data.append([
-            Paragraph(str(row["Feature"]), wrap_style),
-            Paragraph(str(row["Value"]), wrap_style),
-            Paragraph(contrib_str, wrap_style),
-            Paragraph(dir_str, wrap_style),
-            Paragraph(row["Interpretation"], wrap_style)
+    
+    top_features = contrib_df.head(8).copy()
+    feature_values = contrib_df.set_index("Feature")["Value"].to_dict()
+    
+    contrib_table_data = [["Feature", "Value", "Contribution", "Impact", "Interpretation"]]
+    
+    for _, row in top_features.iterrows():
+        feature = str(row["Feature"])
+        value = fmt_value(row["Value"])
+        contrib = float(row["Contribution"])
+        direction = "↑ Higher Risk" if contrib > 0 else "↓ Lower Risk"
+        
+        interpretation = interpret_feature(disease, feature, contrib, row["Value"])
+        # Clean interpretation - remove HTML and shorten
+        interpretation = interpretation.replace("<b>", "").replace("</b>", "")
+        if len(interpretation) > 150:
+            interpretation = interpretation[:147] + "..."
+        
+        contrib_str = f"{contrib:+.3f}"
+        
+        contrib_table_data.append([
+            Paragraph(feature, small_style),
+            Paragraph(value, small_style),
+            Paragraph(f"<font color='{'red' if contrib > 0 else 'green'}'><b>{contrib_str}</b></font>", small_style),
+            Paragraph(f"<font color='{'red' if contrib > 0 else 'green'}'>{direction}</font>", small_style),
+            Paragraph(interpretation, small_style)
         ])
-
-    t2 = LongTable(table_data, colWidths=[80, 60, 70, 80, 220])
-    t2.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+    
+    contrib_table = Table(contrib_table_data, colWidths=[0.9*inch, 0.7*inch, 0.8*inch, 0.9*inch, 3.7*inch])
+    contrib_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
     ]))
-    elems.append(t2)
-    elems.append(Spacer(1, 12))
-
-    feature_values = (
-    contrib_df.set_index("Feature")["Value"].to_dict()
-    if "Value" in contrib_df.columns
-    else {}
-)
-
-
-    # -------------------------
-    # Summary section
-    # -------------------------
-    summary_text = generate_summary(contrib_df, disease, proba, decision)
-    elems.append(Paragraph(summary_text, styles["Normal"]))
-    elems.append(Spacer(1, 8))
-
-    clinical_text = generate_clinical_recommendations(contrib_df, disease, feature_values)
-    elems.append(Paragraph(clinical_text, styles["Normal"]))
-    elems.append(Spacer(1, 12))
-
-    doc.build(elems)
+    story.append(contrib_table)
+    story.append(Spacer(1, 15))
+    
+    # Clinical Summary
+    story.append(Paragraph("Clinical Summary", heading_style))
+    story.append(Spacer(1, 6))
+    
+    summary_paragraphs = [
+        f"This {patient_age} {patient_sex.lower()} patient presents with a <b>{risk_text.lower()} 30-day readmission risk ({proba:.1%})</b> following discharge for {disease} management. The risk assessment threshold for this condition is {threshold:.0%}, placing this patient {'significantly above' if decision == 1 else 'below'} the high-risk threshold.",
+        
+        f"<b>Primary Risk Drivers:</b> {', '.join(top_features.head(3)['Feature'].tolist())} are identified as major contributing factors.",
+        
+        "<b>Recommendation:</b> Close follow-up and aggressive management of identified risk factors is recommended to prevent readmission."
+    ]
+    
+    for para in summary_paragraphs:
+        story.append(Paragraph(para, body_style))
+    
+    story.append(Spacer(1, 12))
+    
+    # Clinical Management Recommendations
+    story.append(Paragraph("Clinical Management Recommendations", heading_style))
+    story.append(Spacer(1, 6))
+    
+    recommendations = [
+        f"<b>Primary Disease Management:</b> Review and optimize current treatment plan for {disease}. Consider consultation with appropriate specialists.",
+        
+        "<b>Medication Reconciliation:</b> Complete medication review at discharge. Ensure patient understands all medications, dosing, and timing.",
+        
+        "<b>Care Coordination:</b> Schedule follow-up appointment within 7 days of discharge. Consider home health services for high-risk patients.",
+        
+        "<b>Patient Education:</b> Reinforce medication adherence, warning signs requiring immediate attention, and lifestyle modifications.",
+        
+        "<b>Laboratory Monitoring:</b> Schedule appropriate lab work based on disease-specific guidelines and medication monitoring requirements.",
+    ]
+    
+    for rec in recommendations:
+        story.append(Paragraph(f"• {rec}", body_style))
+    
+    # Ensure consistent spacing before page break
+    story.append(Spacer(1, 0.3*inch))  # Fixed spacing to end of page
+    
+    # Page footer - positioned consistently
+    story.append(Paragraph("<para align=right><font size=9 color='#7f8c8d'>Page 1 of 3</font></para>", body_style))
+    
+    # PAGE BREAK - Force new page
+    story.append(PageBreak())
+    
+    # ===========================================
+    # PAGE 2: MEDICATION RECOMMENDATIONS
+    # ===========================================
+    
+    # Header for page 2
+    story.append(Paragraph("City General Hospital", title_style))
+    story.append(Paragraph("Medication Recommendations", subtitle_style))
+    story.append(Spacer(1, 12))
+    
+    # Patient info header (compact)
+    patient_info_data_p2 = [
+        ["Patient ID:", patient_id, "Patient Name:", patient_name],
+        ["Age / Sex:", f"{patient_age} / {patient_sex}", "Disease:", disease]
+    ]
+    
+    patient_info_table_p2 = Table(patient_info_data_p2, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    patient_info_table_p2.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ecf0f1')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(patient_info_table_p2)
+    story.append(Spacer(1, 15))
+    
+    # Alert box
+    alert_text = ("<b>Important:</b> The following medication recommendations are based on current clinical "
+                  "guidelines and the patient's risk profile. All medications must be reviewed, prescribed, "
+                  "and adjusted by the attending physician based on individual patient factors, allergies, "
+                  "drug interactions, and institutional protocols.")
+    
+    alert_table = Table([[Paragraph(alert_text, body_style)]], colWidths=[7*inch])
+    alert_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fff3cd')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#ffc107')),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    story.append(alert_table)
+    story.append(Spacer(1, 15))
+    
+    # Medication recommendations
+    med_text = generate_medication_recommendations(disease, contrib_df, feature_values)
+    
+    # Convert HTML to paragraphs (clean version for PDF)
+    med_text_clean = med_text.replace("<br/>", "\n").replace("<br>", "\n")
+    med_text_clean = med_text_clean.replace("<b>", "<b>").replace("</b>", "</b>")
+    med_text_clean = med_text_clean.replace("<i>", "<i>").replace("</i>", "</i>")
+    
+    for line in med_text_clean.split("\n"):
+        if line.strip():
+            story.append(Paragraph(line, body_style))
+    
+    # Page footer
+    story.append(Spacer(1, 15))
+    story.append(Paragraph("<para align=right><font size=9 color='#7f8c8d'>Page 2 of 3</font></para>", body_style))
+    
+    # PAGE BREAK
+    story.append(PageBreak())
+    
+    # ===========================================
+    # PAGE 3: DISEASE PROGRESSION & RELATED CONDITIONS
+    # ===========================================
+    
+    # Header for page 3
+    story.append(Paragraph("City General Hospital", title_style))
+    story.append(Paragraph("Potential Disease Progression & Related Conditions", subtitle_style))
+    story.append(Spacer(1, 12))
+    
+    # Patient info header (compact)
+    story.append(patient_info_table_p2)
+    story.append(Spacer(1, 15))
+    
+    # Related disease predictions
+    disease_text = generate_related_disease_predictions(disease, contrib_df, feature_values)
+    
+    # Convert HTML to paragraphs (clean version for PDF)
+    disease_text_clean = disease_text.replace("<br/>", "\n").replace("<br>", "\n")
+    disease_text_clean = disease_text_clean.replace("<b>", "<b>").replace("</b>", "</b>")
+    disease_text_clean = disease_text_clean.replace("<i>", "<i>").replace("</i>", "</i>")
+    # Fix special characters that appear as black boxes
+    disease_text_clean = disease_text_clean.replace("⚠️", "[HIGH RISK]")
+    disease_text_clean = disease_text_clean.replace("⚡", "[MODERATE RISK]")
+    disease_text_clean = disease_text_clean.replace("•", "-")
+    
+    for line in disease_text_clean.split("\n"):
+        if line.strip():
+            story.append(Paragraph(line, body_style))
+    
+    story.append(Spacer(1, 20))
+    
+    # Disclaimer
+    disclaimer_text = ("<b>Disclaimer:</b> This report is generated by a machine learning model for clinical "
+                      "decision support. All recommendations should be reviewed and approved by qualified "
+                      "healthcare professionals. Medication dosages and treatment plans must be individualized "
+                      "based on patient-specific factors, comorbidities, and current clinical guidelines.")
+    
+    disclaimer_table = Table([[Paragraph(disclaimer_text, small_style)]], colWidths=[7*inch])
+    disclaimer_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    story.append(disclaimer_table)
+    
+    # Page footer
+    story.append(Spacer(1, 15))
+    story.append(Paragraph("<para align=right><font size=9 color='#7f8c8d'>Page 3 of 3</font></para>", body_style))
+    
+    # Build PDF
+    doc.build(story)
     print(f"✅ PDF report saved: {path}")
     return path
 

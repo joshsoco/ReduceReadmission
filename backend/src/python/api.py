@@ -1,14 +1,14 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import os
-import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 # Import your existing functions
-from report_generator import (
+from test import (
     load_model_and_metadata,
     prepare_X,
     predict,
@@ -20,10 +20,21 @@ from report_generator import (
 from interpretation_rules import (
     generate_summary,
     generate_clinical_recommendations,
+    generate_medication_recommendations,
+    generate_related_disease_predictions,
     interpret_feature
 )
 
 app = FastAPI(title="Readmission Risk Analysis API")
+
+# Add CORS middleware for browser access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Store generated files temporarily with unique IDs
 TEMP_FILES = {}
@@ -39,7 +50,13 @@ async def analyze_file(
     file: UploadFile = File(...),
 ):
     """
-    Analyze patient data and return risk analysis with download links for PDF/Excel.
+    Analyze patient data and return comprehensive risk analysis including:
+    - Risk probability and decision
+    - Top contributing factors
+    - Clinical recommendations
+    - Medication protocols
+    - Related disease predictions
+    - Download links for PDF/Excel reports
     """
     try:
         # Validate disease
@@ -96,6 +113,8 @@ async def analyze_file(
         feature_values = contrib_df.set_index("Feature")["Value"].to_dict()
         summary_text = generate_summary(contrib_df, disease, proba, decision)
         clinical_text = generate_clinical_recommendations(contrib_df, disease, feature_values)
+        medication_text = generate_medication_recommendations(disease, contrib_df, feature_values)
+        related_diseases_text = generate_related_disease_predictions(disease, contrib_df, feature_values)
         
         # Prepare top features with interpretations
         top_features = contrib_df.head(10).copy()
@@ -114,18 +133,25 @@ async def analyze_file(
             "threshold": threshold,
             "summary": summary_text,
             "clinical_recommendations": clinical_text,
+            "medication_recommendations": medication_text,
+            "related_disease_predictions": related_diseases_text,
             "top_features": top_features.to_dict(orient="records"),
             "download_links": {
                 "pdf": f"/download/pdf/{session_id}",
                 "excel": f"/download/excel/{session_id}"
-            }
+            },
+            "timestamp": datetime.now().isoformat()
         }
         
         return JSONResponse(result)
     
     except Exception as e:
+        import traceback
         return JSONResponse(
-            {"error": f"Analysis failed: {str(e)}"},
+            {
+                "error": f"Analysis failed: {str(e)}",
+                "details": traceback.format_exc()
+            },
             status_code=500
         )
 
@@ -180,11 +206,36 @@ async def health_check():
     return {
         "status": "healthy",
         "available_diseases": list(REGISTRY.keys()),
+        "features": [
+            "Risk prediction",
+            "SHAP analysis",
+            "Clinical recommendations",
+            "Medication protocols",
+            "Related disease predictions",
+            "PDF/Excel reports"
+        ],
         "timestamp": datetime.now().isoformat()
     }
 
 # -----------------------------
-# 5️⃣ Cleanup old files (optional background task)
+# 5️⃣ Get Available Diseases
+# -----------------------------
+@app.get("/diseases")
+async def get_diseases():
+    """Get list of supported diseases and their thresholds."""
+    return {
+        "diseases": [
+            {
+                "name": disease,
+                "threshold": info["threshold"],
+                "description": f"30-day readmission prediction for {disease}"
+            }
+            for disease, info in REGISTRY.items()
+        ]
+    }
+
+# -----------------------------
+# 6️⃣ Cleanup old files
 # -----------------------------
 @app.on_event("startup")
 async def cleanup_old_files():
@@ -208,6 +259,8 @@ async def cleanup_old_files():
     
     for session_id in expired_sessions:
         del TEMP_FILES[session_id]
+    
+    print(f"✅ Cleaned up {len(expired_sessions)} expired sessions")
 
 if __name__ == "__main__":
     import uvicorn
