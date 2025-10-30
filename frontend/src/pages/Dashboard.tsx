@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Sparkles, CheckCircle2, FileSpreadsheet } from 'lucide-react';
 import { authService } from '@/features/auth/services/authService';
 import { Navbar } from '@/components/Navbar';
@@ -15,6 +15,9 @@ export const DashboardPage: React.FC = () => {
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [disease, setDisease] = useState<string>('');
   const [isSavingHistory, setIsSavingHistory] = useState(false);
+  
+  // ✅ Track saved uploads to prevent duplicates
+  const savedUploadsRef = useRef<Set<string>>(new Set());
 
   const handleUploadSuccess = async (data: any, fileName: string, fileSize?: number) => {
     console.log('=== Upload Success Handler ===');
@@ -42,9 +45,17 @@ export const DashboardPage: React.FC = () => {
     predictions: any[]; 
     disease?: string;
   }) => {
-    // Prevent duplicate saves
+    // ✅ Prevent duplicate saves
     if (isSavingHistory) {
       console.log('Already saving history, skipping duplicate call');
+      return;
+    }
+
+    // ✅ Create unique identifier for this upload
+    const uploadIdentifier = `${uploadData.fileName}_${uploadData.predictions.length}_${uploadData.disease}`;
+    
+    if (savedUploadsRef.current.has(uploadIdentifier)) {
+      console.log('Upload already saved, skipping duplicate');
       return;
     }
 
@@ -89,6 +100,11 @@ export const DashboardPage: React.FC = () => {
         console.error('Failed to save history:', responseData);
       } else {
         console.log('✅ History saved successfully with ID:', responseData.data?.id);
+        
+        // ✅ Mark this upload as saved
+        if (!responseData.isDuplicate) {
+          savedUploadsRef.current.add(uploadIdentifier);
+        }
       }
     } catch (error) {
       console.error('Error saving upload history:', error);
@@ -96,6 +112,13 @@ export const DashboardPage: React.FC = () => {
       setIsSavingHistory(false);
     }
   };
+
+  // ✅ Clear saved uploads when component unmounts
+  React.useEffect(() => {
+    return () => {
+      savedUploadsRef.current.clear();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
@@ -124,7 +147,7 @@ export const DashboardPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm text-gray-700">
-              <p>• <strong>Model:</strong> XGBoost Classifier (Diabetes & Pneumonia)</p>
+              <p>• <strong>Models:</strong> XGBoost Classifier (Diabetes, CKD, COPD, Hypertension, Pneumonia)</p>
               <p>• <strong>Output:</strong> Risk Band (Low/Medium/High) with probability scores</p>
               <p>• <strong>Supported Formats:</strong> Excel (.xlsx) or CSV (.csv)</p>
               <p>• <strong>Required Columns:</strong> Patient demographics, diagnoses, procedures, medications</p>
