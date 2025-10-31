@@ -21,7 +21,6 @@ export const DashboardPage: React.FC = () => {
   const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string>('');
   const [excelDownloadUrl, setExcelDownloadUrl] = useState<string>('');
   
-  // ✅ Track saved uploads to prevent duplicates
   const savedUploadsRef = useRef<Set<string>>(new Set());
 
   const handleUploadSuccess = async (data: any, fileName: string, fileSize?: number) => {
@@ -35,25 +34,23 @@ export const DashboardPage: React.FC = () => {
       if (data.pdfDownloadUrl) setPdfDownloadUrl(data.pdfDownloadUrl);
       if (data.excelDownloadUrl) setExcelDownloadUrl(data.excelDownloadUrl);
       
-      // ✅ Pass all data directly to saveToHistory (don't rely on state)
       await saveToHistory({
-        fileName: fileName,  // ✅ Use parameter, not state
+        fileName: fileName,
         fileSize: fileSize || data.fileSize || 0,
         predictions: data.predictions,
         disease: data.disease,
-        sessionId: data.sessionId,  // ✅ Pass from data
-        pdfDownloadUrl: data.pdfDownloadUrl,  // ✅ Pass from data
-        excelDownloadUrl: data.excelDownloadUrl,  // ✅ Pass from data
+        sessionId: data.sessionId,
+        pdfDownloadUrl: data.pdfDownloadUrl,
+        excelDownloadUrl: data.excelDownloadUrl,
       });
     }
   };
 
   const saveToHistory = async (uploadData: any) => {
-    // ✅ Use uploadData.fileName instead of state variable
     const uploadIdentifier = `${uploadData.fileName}-${Date.now()}`;
     
     if (savedUploadsRef.current.has(uploadIdentifier)) {
-      console.log('⏭️ Upload already saved, skipping duplicate');
+      console.log('Upload already saved, skipping duplicate');
       return;
     }
 
@@ -65,7 +62,7 @@ export const DashboardPage: React.FC = () => {
         throw new Error('No authentication token found');
       }
 
-      console.log('💾 Preparing history data with URLs:', {
+      console.log('Preparing history data with URLs:', {
         fileName: uploadData.fileName,
         sessionId: uploadData.sessionId,
         pdfDownloadUrl: uploadData.pdfDownloadUrl,
@@ -74,7 +71,7 @@ export const DashboardPage: React.FC = () => {
       });
 
       const historyData = {
-        fileName: uploadData.fileName,  // ✅ Use from parameter
+        fileName: uploadData.fileName,
         uploadDate: new Date().toLocaleDateString(),
         uploadTime: new Date().toLocaleTimeString(),
         recordCount: uploadData.predictions?.length || 0,
@@ -84,12 +81,12 @@ export const DashboardPage: React.FC = () => {
         disease: uploadData.disease || 'Unknown',
         predictions: uploadData.predictions || [],
         uploadId: uploadIdentifier,
-        sessionId: uploadData.sessionId,  // ✅ From parameter
-        pdfDownloadUrl: uploadData.pdfDownloadUrl,  // ✅ From parameter
-        excelDownloadUrl: uploadData.excelDownloadUrl,  // ✅ From parameter
+        sessionId: uploadData.sessionId,
+        pdfDownloadUrl: uploadData.pdfDownloadUrl,
+        excelDownloadUrl: uploadData.excelDownloadUrl,
       };
 
-      console.log('📤 Sending to /api/history:', JSON.stringify(historyData, null, 2));
+      console.log('Sending to /api/history:', JSON.stringify(historyData, null, 2));
 
       const response = await fetch(`${API_BASE_URL}/history`, {
         method: 'POST',
@@ -106,13 +103,13 @@ export const DashboardPage: React.FC = () => {
         throw new Error(responseData.message || `HTTP ${response.status}: Failed to save history`);
       }
 
-      console.log('✅ History saved successfully:', responseData);
+      console.log('History saved successfully:', responseData);
 
       savedUploadsRef.current.add(uploadIdentifier);
       setSaveError('');
 
     } catch (error) {
-      console.error('❌ Error saving history:', error);
+      console.error('Error saving history:', error);
       setSaveError((error as Error).message);
     } finally {
       setIsSavingHistory(false);

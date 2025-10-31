@@ -111,7 +111,7 @@ export const ManualEntryPage: React.FC = () => {
                         id="fullName"
                         value={formData.fullName}
                         onChange={(e) => updateField('fullName', e.target.value)}
-                        placeholder="John Doe"
+                        placeholder="Joshua Co"
                         required
                       />
                     </div>

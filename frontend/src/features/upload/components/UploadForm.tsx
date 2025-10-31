@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -20,6 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useUploadViewModel } from '../hooks/useUploadViewModel';
 import { FileModel } from '../models/fileModel';
+import { HelpModal } from '@/components/HelpModal';
 
 interface UploadFormProps {
   onUploadSuccess?: (data: any, fileName: string) => void;
@@ -48,6 +49,7 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
     downloadTemplate,
     reset,
   } = useUploadViewModel();
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   // ✅ Track if callback has been called
   const hasCalledCallback = useRef(false);
@@ -255,13 +257,13 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
           {/* Bottom Actions */}
           <div className="flex justify-between items-center pt-4 border-t">
             <Button
-              onClick={downloadTemplate}
+              onClick={() => setIsHelpModalOpen(true)}
               variant="ghost"
               size="sm"
               className="flex items-center gap-2 text-blue-600 hover:text-blue-700"
             >
-            <HelpCircle className="w-4 h-4" />
-            Help
+              <HelpCircle className="w-4 h-4" />
+              Help
             </Button>
 
             {(file || status === 'success') && (
@@ -292,6 +294,11 @@ export const UploadForm: React.FC<UploadFormProps> = ({ onUploadSuccess }) => {
           )}
         </CardContent>
       </Card>
+      {/* Help Modal */}
+      <HelpModal 
+        isOpen={isHelpModalOpen} 
+        onClose={() => setIsHelpModalOpen(false)} 
+      />
     </div>
   );
 };
