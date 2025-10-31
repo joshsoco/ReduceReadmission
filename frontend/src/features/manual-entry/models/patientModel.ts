@@ -10,12 +10,9 @@ export interface PatientFormData {
   secondaryDiagnoses: string;
   numberOfProcedures: number;
   numberOfMedications: number;
-  bloodPressure: string;
   glucoseLevel: number;
   a1cResult: number;
-  weight: number;
   bmi: number;
-  notes: string;
 }
 
 export interface PredictionResult {
@@ -28,9 +25,7 @@ export interface PredictionResult {
 export interface SavedEntry extends PatientFormData {
   id: string;
   prediction?: PredictionResult;
-  createdBy: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 export const initialFormData: PatientFormData = {
@@ -45,12 +40,9 @@ export const initialFormData: PatientFormData = {
   secondaryDiagnoses: '',
   numberOfProcedures: 0,
   numberOfMedications: 0,
-  bloodPressure: '',
   glucoseLevel: 0,
   a1cResult: 0,
-  weight: 0,
   bmi: 0,
-  notes: '',
 };
 
 export const sampleData: PatientFormData = {
@@ -65,10 +57,7 @@ export const sampleData: PatientFormData = {
   secondaryDiagnoses: 'Hypertension, Type 2 Diabetes, Chronic Kidney Disease',
   numberOfProcedures: 2,
   numberOfMedications: 8,
-  bloodPressure: '140/90',
   glucoseLevel: 180,
   a1cResult: 7.5,
-  weight: 85,
   bmi: 28.5,
-  notes: 'Patient has history of non-compliance with medication regimen. Lives alone with limited family support.',
 };

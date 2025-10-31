@@ -4,20 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 interface PredictionResponse {
   success: boolean;
-  data?: {
-    riskLevel: 'Low' | 'Medium' | 'High';
-    riskScore: number;
-    recommendation: string;
-  };
+  prediction?: PredictionResult;
   message?: string;
-  error?: string;
 }
 
 interface SaveResponse {
   success: boolean;
-  data?: SavedEntry;
+  entry?: SavedEntry;
   message?: string;
-  error?: string;
 }
 
 class ManualEntryService {
@@ -43,14 +37,14 @@ class ManualEntryService {
         throw new Error(result.message || 'Prediction failed');
       }
 
-      if (!result.data) {
+      if (!result.prediction) {
         throw new Error('No prediction data received');
       }
 
       return {
-        riskLevel: result.data.riskLevel,
-        riskScore: result.data.riskScore,
-        recommendation: result.data.recommendation,
+        riskLevel: result.prediction.riskLevel,
+        riskScore: result.prediction.riskScore,
+        recommendation: result.prediction.recommendation,
         predictedAt: new Date().toISOString(),
       };
     } catch (error) {
@@ -70,7 +64,7 @@ class ManualEntryService {
     // Save to localStorage
     const existingEntries = this.getLocalEntries();
     existingEntries.unshift(savedEntry);
-    const limitedEntries = existingEntries.slice(0, 20); // Keep last 20 entries
+    const limitedEntries = existingEntries.slice(0, 20);
     localStorage.setItem('manualEntries', JSON.stringify(limitedEntries));
 
     return savedEntry;

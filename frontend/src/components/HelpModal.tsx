@@ -31,8 +31,6 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             <TabsTrigger value="format">Data Format</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
           </TabsList>
-
-          {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
             <Card>
               <CardHeader>
@@ -333,7 +331,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
             onClick={onClose}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Got it, thanks!
+            done
           </button>
         </div>
       </DialogContent>

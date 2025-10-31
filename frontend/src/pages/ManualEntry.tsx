@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { 
   FileText, User, Calendar, Stethoscope, Activity, 
   AlertCircle, CheckCircle2, TrendingUp, Save, 
-  RefreshCw, Database, FileDown, Trash2, Clock 
+  RefreshCw, FileDown, Trash2, Clock 
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,6 @@ export const ManualEntryPage: React.FC = () => {
     updateField,
     predictReadmission,
     saveEntry,
-    loadSampleData,
     resetForm,
     loadRecentEntries,
     deleteEntry,
@@ -82,6 +81,7 @@ export const ManualEntryPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <form onSubmit={handlePredict}>
+              {/* Patient Demographics */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export const ManualEntryPage: React.FC = () => {
                         id="fullName"
                         value={formData.fullName}
                         onChange={(e) => updateField('fullName', e.target.value)}
-                        placeholder="Joshua Co"
+                        placeholder="John Doe"
                         required
                       />
                     </div>
@@ -185,6 +185,7 @@ export const ManualEntryPage: React.FC = () => {
                 </CardContent>
               </Card>
 
+              {/* Diagnosis Information */}
               <Card className="mt-6">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -213,7 +214,7 @@ export const ManualEntryPage: React.FC = () => {
                       id="secondaryDiagnoses"
                       value={formData.secondaryDiagnoses}
                       onChange={(e) => updateField('secondaryDiagnoses', e.target.value)}
-                      placeholder="e.g., Hypertension, Type 2 Diabetes, Chronic Kidney Disease (comma-separated)"
+                      placeholder="e.g., Hypertension, Type 2 Diabetes (comma-separated)"
                       className="w-full min-h-[80px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       rows={3}
                     />
@@ -247,6 +248,7 @@ export const ManualEntryPage: React.FC = () => {
                 </CardContent>
               </Card>
 
+              {/* Clinical Data */}
               <Card className="mt-6">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -254,21 +256,11 @@ export const ManualEntryPage: React.FC = () => {
                     Clinical Data
                   </CardTitle>
                   <CardDescription>
-                    Vital signs and laboratory results
+                    Laboratory results and vital measurements
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bloodPressure">Blood Pressure</Label>
-                      <Input
-                        id="bloodPressure"
-                        value={formData.bloodPressure}
-                        onChange={(e) => updateField('bloodPressure', e.target.value)}
-                        placeholder="120/80"
-                      />
-                    </div>
-
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="glucoseLevel">Glucose Level (mg/dL)</Label>
                       <Input
@@ -296,19 +288,6 @@ export const ManualEntryPage: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="weight">Weight (kg)</Label>
-                      <Input
-                        id="weight"
-                        type="number"
-                        step="0.1"
-                        value={formData.weight || ''}
-                        onChange={(e) => updateField('weight', parseFloat(e.target.value) || 0)}
-                        placeholder="70"
-                        min="0"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="bmi">BMI</Label>
                       <Input
                         id="bmi"
@@ -321,21 +300,10 @@ export const ManualEntryPage: React.FC = () => {
                       />
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="notes">Additional Notes</Label>
-                    <textarea
-                      id="notes"
-                      value={formData.notes}
-                      onChange={(e) => updateField('notes', e.target.value)}
-                      placeholder="Any additional relevant information about the patient's condition, social factors, or concerns..."
-                      className="w-full min-h-[100px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      rows={4}
-                    />
-                  </div>
                 </CardContent>
               </Card>
 
+              {/* Action Buttons */}
               <div className="flex flex-wrap gap-3 mt-6">
                 <Button
                   type="submit"
@@ -353,16 +321,6 @@ export const ManualEntryPage: React.FC = () => {
                       Predict Readmission
                     </>
                   )}
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={loadSampleData}
-                  variant="outline"
-                  className="flex items-center gap-2"
-                >
-                  <Database className="w-4 h-4" />
-                  Use Sample Data
                 </Button>
 
                 <Button
@@ -385,6 +343,7 @@ export const ManualEntryPage: React.FC = () => {
             </form>
           </div>
 
+          {/* Right Sidebar */}
           <div className="space-y-6">
             {prediction && (
               <Card className={`border-2 ${
@@ -460,6 +419,7 @@ export const ManualEntryPage: React.FC = () => {
               </Card>
             )}
 
+            {/* Recent Entries */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -516,6 +476,7 @@ export const ManualEntryPage: React.FC = () => {
               </CardContent>
             </Card>
 
+            {/* Quick Tips */}
             <Card className="border-blue-200 bg-blue-50">
               <CardHeader>
                 <CardTitle className="text-sm">Quick Tips</CardTitle>
@@ -523,9 +484,8 @@ export const ManualEntryPage: React.FC = () => {
               <CardContent className="space-y-2 text-xs text-gray-700">
                 <p>• Fill in all required fields (*) before predicting</p>
                 <p>• Use accurate clinical data for better predictions</p>
-                <p>• Sample data is available for testing</p>
                 <p>• Nurses can predict but cannot save records</p>
-                <p>• Admins have full access to all features</p>
+                <p>• Doctors and admins have full access</p>
               </CardContent>
             </Card>
           </div>

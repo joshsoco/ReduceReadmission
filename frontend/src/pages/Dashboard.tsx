@@ -143,6 +143,7 @@ export const DashboardPage: React.FC = () => {
               <p>• <strong>Output:</strong> Risk Band (Low/Medium/High) with probability scores</p>
               <p>• <strong>Supported Formats:</strong> Excel (.xlsx) or CSV (.csv)</p>
               <p>• <strong>Required Columns:</strong> Patient demographics, diagnoses, procedures, medications</p>
+              <p>• <strong>Upload history tracking:</strong> Automatically saves past uploads for easy review and re-download of reports</p><p>• <strong>Clinical recommendations:</strong> Provides data-driven insights to support patient care decisions.</p>
             </div>
           </CardContent>
         </Card>
@@ -169,7 +170,7 @@ export const DashboardPage: React.FC = () => {
           />
         )}
 
-        <div className="grid md:grid-cols-2 gap-6 mt-8">
+        <div className="gap-6 mt-8">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -196,39 +197,6 @@ export const DashboardPage: React.FC = () => {
                   <span>
                     <strong>Step 3:</strong> Review predictions and download comprehensive reports
                   </span>
-                </li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-600" />
-                Key Features
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2 text-gray-700">
-                <li className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  XGBoost machine learning predictions
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Multi-disease support
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Comprehensive PDF & Excel reports
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Clinical recommendations
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                  Upload history tracking
                 </li>
               </ul>
             </CardContent>

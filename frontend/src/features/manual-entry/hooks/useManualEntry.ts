@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { PatientFormData, PredictionResult, SavedEntry, initialFormData, sampleData } from '../models/patientModel';
+import { PatientFormData, PredictionResult, SavedEntry, initialFormData } from '../models/patientModel';
 import { manualEntryService } from '../services/manualEntryService';
 
 export type Status = 'idle' | 'predicting' | 'saving' | 'loading' | 'success' | 'error';
@@ -13,7 +13,6 @@ interface UseManualEntryReturn {
   updateField: (field: keyof PatientFormData, value: any) => void;
   predictReadmission: () => Promise<void>;
   saveEntry: () => Promise<void>;
-  loadSampleData: () => void;
   resetForm: () => void;
   loadRecentEntries: () => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
@@ -69,12 +68,6 @@ export const useManualEntry = (): UseManualEntryReturn => {
     }
   }, [formData, prediction]);
 
-  const loadSampleData = useCallback(() => {
-    setFormData(sampleData);
-    setPrediction(null);
-    setError(null);
-  }, []);
-
   const resetForm = useCallback(() => {
     setFormData(initialFormData);
     setPrediction(null);
@@ -118,7 +111,6 @@ export const useManualEntry = (): UseManualEntryReturn => {
     updateField,
     predictReadmission,
     saveEntry,
-    loadSampleData,
     resetForm,
     loadRecentEntries,
     deleteEntry,
