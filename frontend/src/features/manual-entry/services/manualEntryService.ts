@@ -16,7 +16,7 @@ interface SaveResponse {
 
 class ManualEntryService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
     return {
       'Content-Type': 'application/json',
       'Authorization': token ? `Bearer ${token}` : '',

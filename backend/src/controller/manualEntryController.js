@@ -12,6 +12,7 @@ export const predictManualEntry = async (req, res) => {
 
     const patientData = req.body;
 
+    // Risk calculation logic
     const riskFactors = {
       age: patientData.age > 65 ? 2 : patientData.age > 50 ? 1 : 0,
       admissionType: patientData.admissionType === 'Emergency' ? 2 : 
@@ -36,13 +37,13 @@ export const predictManualEntry = async (req, res) => {
 
     if (riskScore >= 0.6) {
       riskLevel = 'High';
-      recommendation = 'High risk of readmission. Recommend intensive follow-up care, home health services, and close monitoring. Schedule follow-up appointment within 7 days of discharge.';
+      recommendation = 'High risk of readmission. Recommend intensive follow-up care.';
     } else if (riskScore >= 0.35) {
       riskLevel = 'Medium';
-      recommendation = 'Moderate risk of readmission. Recommend standard follow-up care and patient education. Schedule follow-up appointment within 14 days of discharge.';
+      recommendation = 'Moderate risk of readmission. Recommend standard follow-up care.';
     } else {
       riskLevel = 'Low';
-      recommendation = 'Low risk of readmission. Standard discharge procedures recommended. Schedule routine follow-up appointment within 30 days.';
+      recommendation = 'Low risk of readmission. Standard discharge procedures recommended.';
     }
 
     const prediction = {

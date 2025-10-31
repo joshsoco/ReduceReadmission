@@ -22,7 +22,7 @@ interface UseManualEntryReturn {
 export const useManualEntry = (): UseManualEntryReturn => {
   const [formData, setFormData] = useState<PatientFormData>(initialFormData);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
-  const [recentEntries, setRecentEntries] = useState<SavedEntry[]>([]);
+  const [recentEntries, setRecentEntries] = useState<SavedEntry[]>([]); // Define recentEntries state
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +57,7 @@ export const useManualEntry = (): UseManualEntryReturn => {
     try {
       const savedEntry = await manualEntryService.saveEntry(formData, prediction);
       setStatus('success');
-      setRecentEntries(prev => [savedEntry, ...prev.slice(0, 4)]);
+      setRecentEntries(prev => [savedEntry, ...prev.slice(0, 4)]); // Update recentEntries state
       
       setTimeout(() => {
         resetForm();
@@ -79,7 +79,7 @@ export const useManualEntry = (): UseManualEntryReturn => {
     setStatus('loading');
     try {
       const entries = await manualEntryService.getRecentEntries(5);
-      setRecentEntries(entries);
+      setRecentEntries(entries); // Update recentEntries state
       setStatus('idle');
     } catch (err) {
       setError((err as Error).message || 'Failed to load recent entries');
@@ -90,7 +90,7 @@ export const useManualEntry = (): UseManualEntryReturn => {
   const deleteEntry = useCallback(async (id: string) => {
     const success = await manualEntryService.deleteEntry(id);
     if (success) {
-      setRecentEntries(prev => prev.filter(entry => entry.id !== id));
+      setRecentEntries(prev => prev.filter(entry => entry.id !== id)); // Update recentEntries state
     }
   }, []);
 
@@ -105,7 +105,7 @@ export const useManualEntry = (): UseManualEntryReturn => {
   return {
     formData,
     prediction,
-    recentEntries,
+    recentEntries, // Include recentEntries in the return object
     status,
     error,
     updateField,
