@@ -117,22 +117,454 @@ def detect_disease_from_columns(df: pd.DataFrame) -> str:
 # Report generation (Excel / PDF / JSON)
 # -----------------------------------------------------
 def export_excel(patient_id, disease, patient_df, proba, decision, threshold, contrib_df):
+    """
+    Generate comprehensive Excel medical report with multiple formatted sheets:
+    - Executive Summary
+    - Patient Demographics
+    - Clinical Measurements
+    - Risk Analysis (SHAP)
+    - Medication Protocol
+    - Disease Progression Risk
+    - Trending Data (if available)
+    - Reference Ranges
+    """
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime
+    import os
+    
+    from interpretation_rules import (
+        interpret_feature,
+        generate_medication_recommendations,
+        generate_related_disease_predictions,
+        REFERENCE_RANGES,
+        MEDICATION_PROTOCOLS,
+        DISEASE_PROGRESSION_MAP
+    )
+    
     path = os.path.join(OUT_DIR, f"{patient_id}_{disease.replace(' ', '_')}.xlsx")
+    
+    # Helper function to safely get patient data
+    def get_value(column, default="N/A"):
+        try:
+            if column in patient_df.columns:
+                val = patient_df[column].iloc[0]
+                if pd.isna(val) or val == "" or val is None:
+                    return default
+                return val
+            return default
+        except Exception:
+            return default
+    
     with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
-        summary = pd.DataFrame({
-            "Field": ["Patient ID", "Disease", "Predicted Risk", "Threshold", "Flagged High Risk", "Generated At"],
-            "Value": [patient_id, disease, f"{proba:.2f}", f"{threshold:.2f}", "Yes" if decision else "No", datetime.now().isoformat(timespec="seconds")]
+        workbook = writer.book
+        
+        # Define formats
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#2c3e50',
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1
         })
-        summary.to_excel(writer, sheet_name="Summary", index=False)
-
-        contrib_df["Interpretation"] = contrib_df.apply(
-            lambda row: interpret_feature(disease, row["Feature"], row["Contribution"], row["Value"]),
-            axis=1
-        )
-        contrib_df.head(12).to_excel(writer, sheet_name="Top Factors", index=False)
-        patient_df.to_excel(writer, sheet_name="Patient Data", index=False)
-
+        
+        title_format = workbook.add_format({
+            'bold': True,
+            'font_size': 16,
+            'bg_color': '#3498db',
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter'
+        })
+        
+        high_risk_format = workbook.add_format({
+            'bg_color': '#ffebee',
+            'font_color': '#c62828',
+            'bold': True,
+            'border': 1
+        })
+        
+        low_risk_format = workbook.add_format({
+            'bg_color': '#e8f5e9',
+            'font_color': '#2e7d32',
+            'bold': True,
+            'border': 1
+        })
+        
+        normal_format = workbook.add_format({
+            'bg_color': '#e8f5e9',
+            'border': 1
+        })
+        
+        abnormal_high_format = workbook.add_format({
+            'bg_color': '#ffebee',
+            'font_color': '#c62828',
+            'border': 1
+        })
+        
+        abnormal_low_format = workbook.add_format({
+            'bg_color': '#fff3e0',
+            'font_color': '#e65100',
+            'border': 1
+        })
+        
+        label_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#ecf0f1',
+            'border': 1
+        })
+        
+        data_format = workbook.add_format({
+            'border': 1
+        })
+        
+        percent_format = workbook.add_format({
+            'num_format': '0.00%',
+            'border': 1
+        })
+        
+        number_format = workbook.add_format({
+            'num_format': '0.00',
+            'border': 1
+        })
+        
+        # ===========================================
+        # SHEET 1: EXECUTIVE SUMMARY
+        # ===========================================
+        summary_data = {
+            'Report Information': ['', '', '', '', '', ''],
+            'Field': ['Patient ID', 'Patient Name', 'Age', 'Sex', 'Disease', 'Report Generated'],
+            'Value': [
+                patient_id,
+                get_value('patient_name', 'N/A'),
+                get_value('age', 'N/A'),
+                get_value('sex', 'N/A'),
+                disease,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ]
+        }
+        
+        risk_data = {
+            'Risk Assessment': ['', '', '', ''],
+            'Metric': ['Predicted Risk Probability', 'Risk Threshold', 'Risk Classification', 'Recommendation'],
+            'Value': [
+                f"{proba:.2%}",
+                f"{threshold:.2%}",
+                "HIGH RISK" if decision else "LOW RISK",
+                "Immediate intervention required" if decision else "Continue monitoring"
+            ]
+        }
+        
+        summary_df = pd.DataFrame(summary_data)
+        risk_df = pd.DataFrame(risk_data)
+        
+        # Write to sheet
+        summary_df.to_excel(writer, sheet_name='Executive Summary', index=False, startrow=1)
+        risk_df.to_excel(writer, sheet_name='Executive Summary', index=False, startrow=len(summary_df) + 4)
+        
+        worksheet = writer.sheets['Executive Summary']
+        worksheet.set_column('A:A', 20)
+        worksheet.set_column('B:B', 25)
+        worksheet.set_column('C:C', 40)
+        
+        # Add title
+        worksheet.merge_range('A1:C1', f'READMISSION RISK REPORT - {disease.upper()}', title_format)
+        
+        # Format risk classification
+        risk_row = len(summary_df) + 6
+        if decision:
+            worksheet.write(risk_row, 2, "HIGH RISK", high_risk_format)
+        else:
+            worksheet.write(risk_row, 2, "LOW RISK", low_risk_format)
+        
+        # ===========================================
+        # SHEET 2: PATIENT DEMOGRAPHICS & VITALS
+        # ===========================================
+        demographics_data = []
+        demographics_data.append(['PATIENT DEMOGRAPHICS', '', ''])
+        demographics_data.append(['Field', 'Value', 'Notes'])
+        demographics_data.append(['Patient Name', get_value('patient_name', 'N/A'), ''])
+        demographics_data.append(['Age', get_value('age', 'N/A'), ''])
+        demographics_data.append(['Sex', get_value('sex', 'N/A'), ''])
+        demographics_data.append(['', '', ''])
+        
+        demographics_data.append(['ADMISSION DETAILS', '', ''])
+        demographics_data.append(['Field', 'Value', 'Notes'])
+        demographics_data.append(['Length of Stay', get_value('length_of_stay', 'N/A'), 'days'])
+        demographics_data.append(['Discharge Destination', get_value('discharge_destination', 'N/A'), ''])
+        demographics_data.append(['Admission Type', get_value('admission_type', 'N/A'), ''])
+        demographics_data.append(['Prior Admissions (90d)', get_value('prior_admissions_90d', 'N/A'), ''])
+        demographics_data.append(['Comorbidities Count', get_value('comorbidities_count', 'N/A'), ''])
+        demographics_data.append(['Follow-up Scheduled', 'Yes' if get_value('followup_scheduled', 0) == 1 else 'No', ''])
+        
+        demographics_df = pd.DataFrame(demographics_data)
+        demographics_df.to_excel(writer, sheet_name='Patient Demographics', index=False, header=False)
+        
+        worksheet = writer.sheets['Patient Demographics']
+        worksheet.set_column('A:A', 25)
+        worksheet.set_column('B:B', 25)
+        worksheet.set_column('C:C', 30)
+        
+        # ===========================================
+        # SHEET 3: CLINICAL MEASUREMENTS WITH FLAGS
+        # ===========================================
+        clinical_data = []
+        clinical_data.append(['CLINICAL MEASUREMENTS', '', '', '', ''])
+        clinical_data.append(['Parameter', 'Value', 'Unit', 'Reference Range', 'Status'])
+        
+        # Get all numeric columns
+        for col in patient_df.columns:
+            if col.lower() in REFERENCE_RANGES:
+                ref = REFERENCE_RANGES[col.lower()]
+                value = get_value(col, None)
+                
+                if value is not None and value != 'N/A':
+                    try:
+                        numeric_value = float(value)
+                        ref_range = f"{ref['low']} - {ref['high']}"
+                        
+                        if numeric_value > ref['high']:
+                            status = "HIGH"
+                        elif numeric_value < ref['low']:
+                            status = "LOW"
+                        else:
+                            status = "NORMAL"
+                        
+                        clinical_data.append([
+                            col.replace('_', ' ').title(),
+                            numeric_value,
+                            ref['unit'],
+                            ref_range,
+                            status
+                        ])
+                    except:
+                        clinical_data.append([col.replace('_', ' ').title(), value, '', '', 'N/A'])
+        
+        clinical_df = pd.DataFrame(clinical_data)
+        clinical_df.to_excel(writer, sheet_name='Clinical Measurements', index=False, header=False)
+        
+        worksheet = writer.sheets['Clinical Measurements']
+        worksheet.set_column('A:A', 25)
+        worksheet.set_column('B:B', 15)
+        worksheet.set_column('C:C', 15)
+        worksheet.set_column('D:D', 20)
+        worksheet.set_column('E:E', 15)
+        
+        # Apply conditional formatting
+        for idx, row in enumerate(clinical_data[2:], start=2):  # Skip header rows
+            if len(row) > 4:
+                if row[4] == "HIGH":
+                    worksheet.write(idx, 4, "HIGH", abnormal_high_format)
+                elif row[4] == "LOW":
+                    worksheet.write(idx, 4, "LOW", abnormal_low_format)
+                elif row[4] == "NORMAL":
+                    worksheet.write(idx, 4, "NORMAL", normal_format)
+        
+        # ===========================================
+        # SHEET 4: RISK ANALYSIS (SHAP VALUES)
+        # ===========================================
+        feature_values = contrib_df.set_index("Feature")["Value"].to_dict()
+        
+        risk_analysis_data = []
+        risk_analysis_data.append(['SHAP RISK FACTOR ANALYSIS', '', '', '', '', ''])
+        risk_analysis_data.append(['Rank', 'Feature', 'Value', 'SHAP Contribution', 'Impact', 'Clinical Interpretation'])
+        
+        for idx, (_, row) in enumerate(contrib_df.head(15).iterrows(), start=1):
+            interpretation = interpret_feature(disease, row['Feature'], row['Contribution'], row['Value'])
+            # Clean interpretation
+            interpretation = interpretation.replace('<b>', '').replace('</b>', '')
+            interpretation = interpretation[:200] + '...' if len(interpretation) > 200 else interpretation
+            
+            impact = "Increases Risk" if row['Contribution'] > 0 else "Decreases Risk"
+            
+            risk_analysis_data.append([
+                idx,
+                row['Feature'],
+                row['Value'],
+                row['Contribution'],
+                impact,
+                interpretation
+            ])
+        
+        risk_df = pd.DataFrame(risk_analysis_data)
+        risk_df.to_excel(writer, sheet_name='Risk Analysis', index=False, header=False)
+        
+        worksheet = writer.sheets['Risk Analysis']
+        worksheet.set_column('A:A', 8)
+        worksheet.set_column('B:B', 25)
+        worksheet.set_column('C:C', 15)
+        worksheet.set_column('D:D', 18)
+        worksheet.set_column('E:E', 18)
+        worksheet.set_column('F:F', 60)
+        
+        # Color code contributions
+        for idx, row in enumerate(risk_analysis_data[2:], start=2):
+            if len(row) > 3 and isinstance(row[3], (int, float)):
+                if row[3] > 0:
+                    worksheet.write(idx, 3, row[3], abnormal_high_format)
+                    worksheet.write(idx, 4, row[4], abnormal_high_format)
+                else:
+                    worksheet.write(idx, 3, row[3], normal_format)
+                    worksheet.write(idx, 4, row[4], normal_format)
+        
+        # ===========================================
+        # SHEET 5: MEDICATION PROTOCOL
+        # ===========================================
+        med_protocol = MEDICATION_PROTOCOLS.get(disease, {})
+        
+        med_data = []
+        med_data.append(['MEDICATION RECOMMENDATIONS', '', '', ''])
+        med_data.append(['Category', 'Medication', 'Dosage/Instructions', 'Notes'])
+        
+        if med_protocol:
+            for category, medications in med_protocol.items():
+                if category == 'monitoring':
+                    continue
+                
+                category_name = category.replace('_', ' ').title()
+                
+                if isinstance(medications, list):
+                    for idx, med in enumerate(medications):
+                        if idx == 0:
+                            med_data.append([category_name, med, '', ''])
+                        else:
+                            med_data.append(['', med, '', ''])
+                else:
+                    med_data.append([category_name, medications, '', ''])
+            
+            # Add monitoring
+            if 'monitoring' in med_protocol:
+                med_data.append(['', '', '', ''])
+                med_data.append(['MONITORING REQUIREMENTS', '', '', ''])
+                med_data.append(['', med_protocol['monitoring'], '', ''])
+        else:
+            med_data.append(['General', 'Consult attending physician for disease-specific protocol', '', ''])
+        
+        med_df = pd.DataFrame(med_data)
+        med_df.to_excel(writer, sheet_name='Medication Protocol', index=False, header=False)
+        
+        worksheet = writer.sheets['Medication Protocol']
+        worksheet.set_column('A:A', 25)
+        worksheet.set_column('B:B', 50)
+        worksheet.set_column('C:C', 30)
+        worksheet.set_column('D:D', 30)
+        
+        # ===========================================
+        # SHEET 6: DISEASE PROGRESSION RISK
+        # ===========================================
+        progression_map = DISEASE_PROGRESSION_MAP.get(disease, {})
+        
+        progression_data = []
+        progression_data.append(['DISEASE PROGRESSION RISK ASSESSMENT', '', '', '', ''])
+        progression_data.append(['Risk Level', 'Disease', 'Time Frame', 'Risk Factors', 'Prevention Strategy'])
+        
+        if progression_map:
+            # High-risk conditions
+            if 'high_risk' in progression_map:
+                for condition in progression_map['high_risk']:
+                    progression_data.append([
+                        'HIGH',
+                        condition['disease'],
+                        condition.get('time_frame', 'Variable'),
+                        ', '.join(condition.get('risk_factors', [])),
+                        condition.get('prevention', '')
+                    ])
+            
+            # Moderate-risk conditions
+            if 'moderate_risk' in progression_map:
+                for condition in progression_map['moderate_risk']:
+                    progression_data.append([
+                        'MODERATE',
+                        condition['disease'],
+                        condition.get('time_frame', 'Variable'),
+                        ', '.join(condition.get('risk_factors', [])),
+                        condition.get('prevention', '')
+                    ])
+        else:
+            progression_data.append(['', 'No specific progression data available', '', '', ''])
+        
+        progression_df = pd.DataFrame(progression_data)
+        progression_df.to_excel(writer, sheet_name='Disease Progression', index=False, header=False)
+        
+        worksheet = writer.sheets['Disease Progression']
+        worksheet.set_column('A:A', 15)
+        worksheet.set_column('B:B', 30)
+        worksheet.set_column('C:C', 20)
+        worksheet.set_column('D:D', 40)
+        worksheet.set_column('E:E', 50)
+        
+        # Color code risk levels
+        for idx, row in enumerate(progression_data[2:], start=2):
+            if len(row) > 0:
+                if row[0] == 'HIGH':
+                    worksheet.write(idx, 0, 'HIGH', high_risk_format)
+                elif row[0] == 'MODERATE':
+                    worksheet.write(idx, 0, 'MODERATE', abnormal_low_format)
+        
+        # ===========================================
+        # SHEET 7: COMPLETE RAW DATA
+        # ===========================================
+        patient_df.to_excel(writer, sheet_name='Raw Patient Data', index=False)
+        
+        worksheet = writer.sheets['Raw Patient Data']
+        for idx, col in enumerate(patient_df.columns):
+            worksheet.set_column(idx, idx, 20)
+        
+        # ===========================================
+        # SHEET 8: REFERENCE RANGES
+        # ===========================================
+        ref_data = []
+        ref_data.append(['CLINICAL REFERENCE RANGES', '', '', ''])
+        ref_data.append(['Parameter', 'Low', 'High', 'Unit'])
+        
+        for param, ranges in REFERENCE_RANGES.items():
+            ref_data.append([
+                param.replace('_', ' ').title(),
+                ranges['low'],
+                ranges['high'],
+                ranges['unit']
+            ])
+        
+        ref_df = pd.DataFrame(ref_data)
+        ref_df.to_excel(writer, sheet_name='Reference Ranges', index=False, header=False)
+        
+        worksheet = writer.sheets['Reference Ranges']
+        worksheet.set_column('A:A', 25)
+        worksheet.set_column('B:B', 15)
+        worksheet.set_column('C:C', 15)
+        worksheet.set_column('D:D', 15)
+        
+        # ===========================================
+        # SHEET 9: CALCULATION SUMMARY
+        # ===========================================
+        calc_data = []
+        calc_data.append(['MODEL CALCULATION DETAILS', '', ''])
+        calc_data.append(['Metric', 'Value', 'Explanation'])
+        calc_data.append(['Model Type', 'Machine Learning (SHAP-based)', 'Tree-based ensemble model'])
+        calc_data.append(['Risk Threshold', f"{threshold:.2%}", 'Classification cutoff for high/low risk'])
+        calc_data.append(['Predicted Probability', f"{proba:.2%}", 'Raw model output probability'])
+        calc_data.append(['Risk Classification', "HIGH RISK" if decision else "LOW RISK", 
+                         f"Probability {'≥' if decision else '<'} Threshold"])
+        calc_data.append(['Number of Features', len(contrib_df), 'Total features analyzed'])
+        calc_data.append(['Top Risk Factors', len(contrib_df[contrib_df['Contribution'] > 0]), 
+                         'Features increasing risk'])
+        calc_data.append(['Protective Factors', len(contrib_df[contrib_df['Contribution'] < 0]), 
+                         'Features decreasing risk'])
+        calc_data.append(['Strongest Risk Factor', contrib_df.iloc[0]['Feature'], 
+                         f"Contribution: {contrib_df.iloc[0]['Contribution']:.3f}"])
+        
+        calc_df = pd.DataFrame(calc_data)
+        calc_df.to_excel(writer, sheet_name='Calculations', index=False, header=False)
+        
+        worksheet = writer.sheets['Calculations']
+        worksheet.set_column('A:A', 30)
+        worksheet.set_column('B:B', 30)
+        worksheet.set_column('C:C', 50)
+    
     print(f"✅ Excel report saved: {path}")
+    print(f"   📊 Sheets created: 9 (Executive Summary, Demographics, Clinical Measurements, " 
+          "Risk Analysis, Medications, Disease Progression, Raw Data, Reference Ranges, Calculations)")
     return path
 
 
